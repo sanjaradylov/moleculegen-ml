@@ -51,8 +51,11 @@ def main():
                         Predict new strings every p epochs (default: 20)
         -v VERBOSE, --verbose VERBOSE
                         Print logs every v iterations. (default: 10)
-        -c CTX, --ctx CTX
+        -c {cpu,CPU,gpu,GPU}, --ctx {cpu,CPU,gpu,GPU}
                         CPU or GPU (default: cpu)
+        -r PREFIX, --prefix PREFIX
+                        Initial symbol(s) of a SMILES string to generate.
+                        (default: C)
     """
     options = process_options()
 
@@ -89,6 +92,7 @@ def main():
         predict_epoch=options.predict_epoch,
         verbose=options.verbose,
         ctx=ctx[options.ctx.lower()],
+        prefix=options.prefix,
     )
 
 
@@ -102,6 +106,7 @@ def train(
         loss_fn: gluon.loss.Loss = gluon.loss.SoftmaxCrossEntropyLoss(),
         verbose: int = 0,
         ctx: context.Context = context.cpu(0),
+        prefix: str = 'C',
 ):
     """Fit `model` with `data`.
 
@@ -125,6 +130,8 @@ def train(
         Loss function.
     verbose : int, default 0
         Print logs every `verbose` steps.
+    prefix : str, default 'C'
+        The initial tokens of the string being generated.
     """
     model.initialize(ctx=ctx, force_reinit=True, init=init.Xavier())
     trainer = gluon.Trainer(model.collect_params(), opt, optimizer_params)
@@ -153,7 +160,7 @@ def train(
             print(f'Epoch {epoch:>4}, perplexity {loss.asscalar():>4.3f}')
 
         if epoch % predict_epoch == 0:
-            print(predict('C', model, dataloader.vocab, 50, ctx))
+            print(predict(prefix, model, dataloader.vocab, 50, ctx))
 
 
 def predict(
@@ -278,6 +285,12 @@ def process_options() -> argparse.Namespace:
         '-c', '--ctx',
         help='CPU or GPU.',
         default='cpu',
+        choices=('cpu', 'CPU', 'gpu', 'GPU'),
+    )
+    parser.add_argument(
+        '-r', '--prefix',
+        help='Initial symbol(s) of a SMILES string to generate.',
+        default='C',
     )
 
     return parser.parse_args()
