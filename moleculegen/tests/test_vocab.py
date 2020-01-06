@@ -3,6 +3,7 @@ import tempfile
 import unittest
 
 from moleculegen.data import SMILESDataset
+from moleculegen.utils import UNK
 from moleculegen.vocab import Vocabulary
 
 
@@ -25,11 +26,11 @@ class VocabTestCase(unittest.TestCase):
     def test_tokens_and_idx(self):
         self.assertSequenceEqual(
             sorted(set(self.smiles_strings)),
-            sorted(self.vocab.idx_to_token),
+            sorted(set(self.vocab.token_to_idx) - set(UNK)),
         )
         self.assertSequenceEqual(
-            sorted(self.vocab.token_to_idx.keys()),
-            sorted(self.vocab.token_freqs.keys()),
+            sorted(set(self.vocab.token_to_idx) - set(UNK)),
+            sorted(set(self.vocab.token_freqs)),
         )
 
     def test_all_tokens(self):

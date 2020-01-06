@@ -15,6 +15,9 @@ from .data import (
 from .model import (
     SMILESRNNModel,
 )
+from .utils import (
+    EOF,
+)
 from .vocab import (
     Vocabulary,
     count_tokens,
@@ -23,6 +26,7 @@ from .vocab import (
 
 
 __all__ = [
+    'EOF',
     'count_tokens',
     'tokenize',
     'SMILESDataLoader',

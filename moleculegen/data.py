@@ -15,6 +15,7 @@ from typing import AnyStr, Iterator, List, Optional, Tuple
 from mxnet import nd
 from mxnet.gluon.data import SimpleDataset
 
+from .utils import EOF
 from .vocab import Vocabulary
 
 
@@ -55,7 +56,7 @@ class SMILESDataset(SimpleDataset):
             for line in fh:
                 if not line:
                     continue
-                smiles_strings.append(line)
+                smiles_strings.append(line.strip() + EOF)
 
         return smiles_strings
 

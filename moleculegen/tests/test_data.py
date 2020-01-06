@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 
-from moleculegen import SMILESDataset, SMILESDataLoader
+from moleculegen import SMILESDataset
 
 
 class DataTestCase(unittest.TestCase):

@@ -23,6 +23,8 @@ from typing import Counter, Dict, List, Optional
 
 from mxnet.gluon.data import SimpleDataset
 
+from .utils import UNK
+
 
 class Corpus:
     """Descriptor that stores corpus of `Vocabulary` or similar instances.
@@ -134,8 +136,8 @@ class Vocabulary:
         self.token_freqs = dict(sorted(
             counter.items(), key=lambda c: c[1], reverse=True))
 
-        self._idx_to_token = list()
-        self._token_to_idx = dict()
+        self._idx_to_token = [UNK]
+        self._token_to_idx = {UNK: 0}
         for token in counter.keys():
             self._idx_to_token.append(token)
             self._token_to_idx[token] = len(self._token_to_idx)

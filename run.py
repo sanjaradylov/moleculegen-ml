@@ -14,6 +14,7 @@ from typing import Any, Dict, Union
 from mxnet import autograd, context, gluon, init, nd, optimizer
 
 from moleculegen import (
+    EOF,
     SMILESDataset,
     SMILESDataLoader,
     SMILESRNNModel,
@@ -211,9 +212,14 @@ def predict(
 
     for step in range(n_steps):
         output, state = model(get_input(), state)
-        outputs.append(int(output.argmax(axis=1).reshape(1).asscalar()))
 
-    # TODO Remove atoms generated after '\n'
+        output_id = int(output.argmax(axis=1).reshape(1).asscalar())
+        char = vocab.idx_to_token[output_id]
+        if char == EOF:
+            break
+
+        outputs.append(output_id)
+
     return ''.join([vocab.idx_to_token[i] for i in outputs])
 
 
