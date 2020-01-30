@@ -11,7 +11,7 @@ __author__ = 'Sanjar Ad[iy]lov'
 import argparse
 from typing import Any, Dict, Union
 
-from mxnet import autograd, context, gluon, init, nd, optimizer
+from mxnet import autograd, context, gluon, init, metric, nd, optimizer
 
 from moleculegen import (
     EOF,
@@ -140,9 +140,12 @@ def train(
 
     for epoch in range(1, n_epochs + 1):
 
+        perplexity = metric.Perplexity(ignore_label=None)
+
         for inputs, outputs in dataloader:
             if state is None:
-                state = model.begin_state(batch_size=inputs.shape[0], ctx=ctx)
+                state = model.begin_state(
+                    batch_size=dataloader.batch_size, ctx=ctx)
             else:
                 for unit in state:
                     unit.detach()
@@ -151,14 +154,16 @@ def train(
             outputs = outputs.T.reshape((-1,)).as_in_context(ctx)
 
             with autograd.record():
-                inputs, state = model(inputs, state)
-                loss = loss_fn(inputs, outputs).mean()
+                p_outputs, state = model(inputs, state)
+                p_outputs = p_outputs.softmax()
+                loss = loss_fn(p_outputs, outputs).mean()
 
             loss.backward()
             trainer.step(batch_size=1)
+            perplexity.update(outputs, p_outputs)
 
         if epoch % verbose == 0:
-            print(f'Epoch {epoch:>4}, perplexity {loss.asscalar():>4.3f}')
+            print(f'Epoch {epoch:>4}, perplexity {perplexity.get()[1]:>4.3f}')
 
         if epoch % predict_epoch == 0:
             print(predict(prefix, model, dataloader.vocab, 50, ctx))
@@ -220,7 +225,7 @@ def predict(
 
         outputs.append(output_id)
 
-    return ''.join([vocab.idx_to_token[i] for i in outputs])
+    return ''.join(vocab.idx_to_token[i] for i in outputs)
 
 
 def process_options() -> argparse.Namespace:
