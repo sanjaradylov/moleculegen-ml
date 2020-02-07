@@ -70,15 +70,22 @@ def main():
     rnn_layer = gluon.rnn.GRU(
         hidden_size=options.hidden_size,
         num_layers=options.n_layers,
+        dropout=0.2,
+    )
+    dense_layer = gluon.nn.Sequential()
+    dense_layer.add(
+        gluon.nn.Dense(256, activation='relu'),
+        gluon.nn.Dropout(0.2),
+        gluon.nn.Dense(len(dataloader.vocab)),
     )
     model = SMILESRNNModel(
         rnn_layer=rnn_layer,
+        dense_layer=dense_layer,
         vocab_size=len(dataloader.vocab),
     )
     optimizer_params = {
         'learning_rate': options.learning_rate,
-        # TODO Add gradient clipping
-        # 'clip_gradient': 1,
+        'clip_gradient': 5,
     }
     ctx = {
         'cpu': context.cpu(0),
@@ -104,7 +111,10 @@ def train(
         opt: Union[str, optimizer.Optimizer] = 'adam',
         n_epochs: int = 1,
         predict_epoch: int = 20,
-        loss_fn: gluon.loss.Loss = gluon.loss.SoftmaxCrossEntropyLoss(),
+        loss_fn: gluon.loss.Loss = gluon.loss.SoftmaxCrossEntropyLoss(
+            from_logits=False,
+            sparse_label=True,
+        ),
         verbose: int = 0,
         ctx: context.Context = context.cpu(0),
         prefix: str = 'C',
@@ -142,7 +152,7 @@ def train(
 
         perplexity = metric.Perplexity(ignore_label=None)
 
-        for inputs, outputs in dataloader:
+        for batch_no, (inputs, outputs) in enumerate(dataloader, start=1):
             if state is None:
                 state = model.begin_state(
                     batch_size=dataloader.batch_size, ctx=ctx)
@@ -155,18 +165,25 @@ def train(
 
             with autograd.record():
                 p_outputs, state = model(inputs, state)
-                p_outputs = p_outputs.softmax()
                 loss = loss_fn(p_outputs, outputs).mean()
 
             loss.backward()
             trainer.step(batch_size=1)
-            perplexity.update(outputs, p_outputs)
+            perplexity.update(outputs, p_outputs.softmax())
 
-        if epoch % verbose == 0:
-            print(f'Epoch {epoch:>4}, perplexity {perplexity.get()[1]:>4.3f}')
+            if batch_no % verbose == 0:
+                print(
+                    f'Loss: {loss.asscalar():>4.3f}, '
+                    f'Perplexity {perplexity.get()[1]:>4.3f}'
+                )
 
-        if epoch % predict_epoch == 0:
-            print(predict(prefix, model, dataloader.vocab, 50, ctx))
+            if batch_no % predict_epoch == 0:
+                generated_molecule = predict(
+                    prefix, model, dataloader.vocab, 50, ctx).strip(EOF)
+                print(f'Molecule: {generated_molecule}')
+
+        if verbose != 0:
+            print(f'\nEpoch {epoch:>4}\n')
 
 
 def predict(

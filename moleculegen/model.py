@@ -17,8 +17,10 @@ class SMILESRNNModel(gluon.Block):
 
     Parameters
     ----------
-    rnn_layer : gluon rnn layer
+    rnn_layer : gluon.rnn._RNNLayer
         Recurrent layer.
+    dense_layer : gluon.nn.Dense or gluon.nn.Sequential
+        Dense layer.
     vocab_size : int
         Number of unique tokens.
     kwargs
@@ -32,13 +34,17 @@ class SMILESRNNModel(gluon.Block):
                 gluon.rnn.LSTM,
                 gluon.rnn.RNN,
             ],
+            dense_layer: Union[
+                gluon.nn.Dense,
+                gluon.nn.Sequential,
+            ],
             vocab_size: int,
             **kwargs,
     ):
         super().__init__(**kwargs)
 
         self.rnn_layer = rnn_layer
-        self.dense_layer = gluon.nn.Dense(vocab_size)
+        self.dense_layer = dense_layer
         self.vocab_size = vocab_size
 
     def begin_state(
