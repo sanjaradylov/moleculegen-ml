@@ -19,7 +19,7 @@ tokenize
 import collections
 import itertools
 import warnings
-from typing import Counter, Dict, List, Optional
+from typing import Counter, Dict, List, Optional, Sequence, Union
 
 from mxnet.gluon.data import SimpleDataset
 
@@ -59,9 +59,8 @@ class Corpus:
             return self.__cache.setdefault(
                 id(instance),
                 [
-                    instance[token]
+                    instance[line]
                     for line in getattr(instance, self.attribute_name)
-                    for token in line
                 ],
             )
         except AttributeError as err:
@@ -105,7 +104,7 @@ class Vocabulary:
         Original data set corpus. Accessible only if corpus is needed.
     """
 
-    corpus: List[int] = Corpus('all_tokens')
+    corpus: List[List[int]] = Corpus('all_tokens')
 
     def __init__(
             self,
@@ -147,10 +146,23 @@ class Vocabulary:
         """
         return len(self._idx_to_token)
 
-    def __getitem__(self, token: str) -> int:
-        """Get the index of the token.
+    def __getitem__(self, tokens: Union[str, Sequence[str]]) \
+            -> Union[int, List[int]]:
+        """Get the index/indices of the token/tokens.
+
+        Parameters
+        ----------
+        tokens : str or list of str
+            Token(s).
+
+        Returns
+        -------
+        idx : int or list of int
+            Token index/indices.
         """
-        return self._token_to_idx.get(token)
+        if isinstance(tokens, Sequence):
+            return [self._token_to_idx.get(token, UNK) for token in tokens]
+        return self._token_to_idx.get(tokens, UNK)
 
     @property
     def idx_to_token(self) -> List[str]:

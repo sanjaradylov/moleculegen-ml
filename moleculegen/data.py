@@ -10,6 +10,7 @@ SMILESDataLoader
 """
 
 import io
+import warnings
 from typing import AnyStr, Iterator, List, Optional, Tuple
 
 from mxnet import nd
@@ -124,8 +125,7 @@ class SMILESDataLoader:
         assert n_steps >= 1, 'Number of steps must be positive non-zero.'
         self._n_steps = n_steps
 
-    # TODO Revise sampling methods
-    def __iter__(self) -> Iterator[Tuple[nd.NDArray, nd.NDArray]]:
+    def sequential_sample(self) -> Iterator[Tuple[nd.NDArray, nd.NDArray]]:
         """Iterate over the samples of the corpus.
         Strategy: sequential partitioning.
 
@@ -135,6 +135,11 @@ class SMILESDataLoader:
             inputs : mxnet.nd.NDArray
             outputs : mxnet.nd.NDArray
         """
+        warnings.warn(
+            "This sampling method might be ineffective; try using iter.",
+            category=DeprecationWarning,
+        )
+
         offset = nd.random.randint(0, self.n_steps).asscalar()
         n_idx = (
             (
@@ -152,3 +157,78 @@ class SMILESDataLoader:
         self.n_batches = inputs.shape[1] // self.n_steps
         for i in range(0, self.n_batches * self.n_steps, self.n_steps):
             yield inputs[:, i:i+self.n_steps], outputs[:, i:i+self.n_steps]
+
+    # TODO Still, revise sampling methods.
+    def __iter__(self) -> Iterator[Tuple[nd.NDArray, nd.NDArray]]:
+        """Iterate over the samples of the corpus.
+
+        Strategy:
+        1. Load corpus containing lists of token IDs.
+        2. For every iteration, get batch of size `self.batch_size` and
+           pad token lists to have equal dimensions.
+        3. The modified batch is divided into mini-batches (input, output)
+           of size (`self.batch_size`, `self.n_steps`). Previous mini-batch
+           differs from the current in exactly one timestep.
+
+        Yields
+        ------
+        mini_batch : tuple
+            inputs : nd.NDArray, shape = (`self.batch_size`, `self.n_steps`)
+            outputs : nd.NDArray, shape = (`self.batch_size`, `self.n_steps`)
+        """
+        for i_batch in range(0, len(self.vocab.corpus), self.batch_size):
+            curr_slice = slice(i_batch, i_batch + self.batch_size)
+            batch = self.__pad(self.vocab.corpus[curr_slice])
+
+            yield from self._iter_steps(batch)
+
+    def _iter_steps(self, batch):
+        """Generate batches separated by time steps.
+
+        Parameters
+        ----------
+        batch : nd.NDArray, shape = (self.batch_size, max_smiles_len)
+            Batch.
+
+        Yields
+        ------
+        result : tuple
+            inputs : nd.NDArray, shape = (self.batch_size, self.n_steps)
+            outputs : nd.NDArray, shape = (self.batch_size, self.n_steps)
+        """
+        inputs = batch[:, :-1]
+        outputs = batch[:, 1:]
+
+        for i_step in range(0, batch.shape[1] - self.n_steps):
+            step_slice = slice(i_step, i_step + self.n_steps)
+            yield inputs[:, step_slice], outputs[:, step_slice]
+
+    def __pad(self, item_lists: List[List[int]]) -> nd.NDArray:
+        """Get a batch of SMILES token lists and fill with the `PAD` token ids
+        those lists with lesser number of tokens.
+
+        Parameters
+        ----------
+        item_lists : list
+            List of token lists, each token list contains token indices and
+            constitutes a SMILES string.
+
+        Returns
+        -------
+        new_item_list : nd.NDArray
+             The array of token lists.
+        """
+        max_len = max(map(len, item_lists))
+        pad_token_idx = len(self.vocab)
+        new_items_list = []
+
+        for item_list in item_lists:
+            if len(item_list) != max_len:
+                pad_len = max_len - len(item_list)
+                pad_list = [pad_token_idx] * pad_len
+                new_items_list.append(item_list + pad_list)
+            else:
+                new_items_list.append(item_list)
+
+        new_items_list = nd.array(new_items_list, dtype=int)
+        return new_items_list

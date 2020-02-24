@@ -1,23 +1,19 @@
-import os
-import tempfile
+"""
+Test `Vocabulary` class and its main components.
+"""
+
 import unittest
 
 from moleculegen.data import SMILESDataset
-from moleculegen.utils import UNK
+from moleculegen.utils import EOF, UNK
 from moleculegen.vocab import Vocabulary
+from moleculegen.tests.utils import TempSMILESFile
 
 
 class VocabTestCase(unittest.TestCase):
     def setUp(self):
-        self.smiles_strings = (
-            'CC(=O)NCCC1=CNc2c1cc(OC)cc2\n'
-            'CCc1c[n+]2ccc3c4ccccc4[nH]c3c2cc1\n'
-            'O1C=C[C@H]([C@H]1O2)c3c2cc(OC)c4c3OC(=O)C5=C4CCC(=O)5'
-        )
-
-        self.fh = tempfile.NamedTemporaryFile(mode='w+', encoding='ascii')
-        self.fh.write(self.smiles_strings)
-        self.fh.seek(os.SEEK_SET)
+        self.temp_file = TempSMILESFile()
+        self.fh = self.temp_file.open()
 
         # See `test_data.py` for data set test cases.
         self.dataset = SMILESDataset(self.fh.name)
@@ -25,7 +21,7 @@ class VocabTestCase(unittest.TestCase):
 
     def test_tokens_and_idx(self):
         self.assertSequenceEqual(
-            sorted(set(self.smiles_strings)),
+            sorted(set(self.temp_file.smiles_strings)),
             sorted(set(self.vocab.token_to_idx) - set(UNK)),
         )
         self.assertSequenceEqual(
@@ -36,8 +32,17 @@ class VocabTestCase(unittest.TestCase):
     def test_all_tokens(self):
         self.assertEqual(
             len(self.vocab.all_tokens),
-            len(self.smiles_strings.split('\n')),
+            len(self.temp_file.smiles_strings.split('\n')),
         )
+
+    def test_corpus(self):
+        smiles_list = self.temp_file.smiles_strings.split('\n')
+
+        self.assertEqual(len(self.vocab.corpus), len(smiles_list))
+
+        for idx, tokens in zip(self.vocab.corpus, smiles_list):
+            tokens += EOF
+            self.assertListEqual(self.vocab.get_tokens(idx), list(tokens))
 
     def tearDown(self):
         self.fh.close()

@@ -1,29 +1,46 @@
-import os
-import tempfile
+"""
+Test `SMILESDataset` and `SMILESDataLoader` classes and their components.
+"""
+
 import unittest
 
-from moleculegen import SMILESDataset
+from moleculegen import SMILESDataset, SMILESDataLoader
+from moleculegen.tests.utils import TempSMILESFile
 
 
 class DataTestCase(unittest.TestCase):
     def setUp(self):
-        self.smiles_strings = (
-            'CC(=O)NCCC1=CNc2c1cc(OC)cc2\n'
-            'CCc1c[n+]2ccc3c4ccccc4[nH]c3c2cc1\n'
-            'O1C=C[C@H]([C@H]1O2)c3c2cc(OC)c4c3OC(=O)C5=C4CCC(=O)5'
-        )
-
-        self.fh = tempfile.NamedTemporaryFile(mode='w+', encoding='ascii')
-        self.fh.write(self.smiles_strings)
-        self.fh.seek(os.SEEK_SET)
+        self.temp_file = TempSMILESFile(tempfile_kwargs={'prefix': 'dataset'})
+        self.fh = self.temp_file.open()
 
     def test_read(self):
         dataset = SMILESDataset(self.fh.name)
         self.assertEqual(
-            len(self.smiles_strings.split('\n')),
+            len(self.temp_file.smiles_strings.split('\n')),
             len([sample for sample in dataset]),
             len(dataset),
         )
+
+    def tearDown(self):
+        self.fh.close()
+
+
+class DataLoaderTestCase(unittest.TestCase):
+    def setUp(self):
+        self.temp_file = TempSMILESFile(
+            tempfile_kwargs={'prefix': 'dataloader'})
+        self.fh = self.temp_file.open()
+
+        dataset = SMILESDataset(self.fh.name)
+        self.dataloader = SMILESDataLoader(2, 4, dataset)
+
+    def test_iter(self):
+        sample_size = (self.dataloader.batch_size, self.dataloader.n_steps)
+
+        for x, y in self.dataloader:
+            self.assertEqual(x.shape, sample_size)
+            self.assertEqual(y.shape, sample_size)
+            self.assertEqual(x.shape, y.shape)
 
     def tearDown(self):
         self.fh.close()
