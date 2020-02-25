@@ -23,7 +23,7 @@ from typing import Counter, Dict, List, Optional, Sequence, Union
 
 from mxnet.gluon.data import SimpleDataset
 
-from .utils import UNK
+from .utils import SpecialTokens
 
 
 class Corpus:
@@ -135,11 +135,13 @@ class Vocabulary:
         self.token_freqs = dict(sorted(
             counter.items(), key=lambda c: c[1], reverse=True))
 
-        self._idx_to_token = [UNK]
-        self._token_to_idx = {UNK: 0}
+        self._idx_to_token = [SpecialTokens.UNK.value]
+        self._token_to_idx = {SpecialTokens.UNK.value: 0}
         for token in counter.keys():
             self._idx_to_token.append(token)
             self._token_to_idx[token] = len(self._token_to_idx)
+        self._idx_to_token.append(SpecialTokens.PAD.value)
+        self._token_to_idx[SpecialTokens.PAD.value] = len(self._token_to_idx)
 
     def __len__(self) -> int:
         """Return the number of unique tokens (SMILES characters).
@@ -161,8 +163,11 @@ class Vocabulary:
             Token index/indices.
         """
         if isinstance(tokens, Sequence):
-            return [self._token_to_idx.get(token, UNK) for token in tokens]
-        return self._token_to_idx.get(tokens, UNK)
+            return [
+                self._token_to_idx.get(token, SpecialTokens.UNK.value)
+                for token in tokens
+            ]
+        return self._token_to_idx.get(tokens, SpecialTokens.UNK.value)
 
     @property
     def idx_to_token(self) -> List[str]:

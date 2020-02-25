@@ -5,7 +5,7 @@ Test `Vocabulary` class and its main components.
 import unittest
 
 from moleculegen.data import SMILESDataset
-from moleculegen.utils import EOF, UNK
+from moleculegen.utils import SpecialTokens
 from moleculegen.vocab import Vocabulary
 from moleculegen.tests.utils import TempSMILESFile
 
@@ -22,10 +22,12 @@ class VocabTestCase(unittest.TestCase):
     def test_tokens_and_idx(self):
         self.assertSequenceEqual(
             sorted(set(self.temp_file.smiles_strings)),
-            sorted(set(self.vocab.token_to_idx) - set(UNK)),
+            sorted(set(self.vocab.token_to_idx)
+                   - {SpecialTokens.UNK.value, SpecialTokens.PAD.value}),
         )
         self.assertSequenceEqual(
-            sorted(set(self.vocab.token_to_idx) - set(UNK)),
+            sorted(set(self.vocab.token_to_idx)
+                   - {SpecialTokens.UNK.value, SpecialTokens.PAD.value}),
             sorted(set(self.vocab.token_freqs)),
         )
 
@@ -41,7 +43,7 @@ class VocabTestCase(unittest.TestCase):
         self.assertEqual(len(self.vocab.corpus), len(smiles_list))
 
         for idx, tokens in zip(self.vocab.corpus, smiles_list):
-            tokens += EOF
+            tokens += SpecialTokens.EOS.value
             self.assertListEqual(self.vocab.get_tokens(idx), list(tokens))
 
     def tearDown(self):

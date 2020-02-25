@@ -16,7 +16,8 @@ from .model import (
     SMILESRNNModel,
 )
 from .utils import (
-    EOF,
+    SpecialTokens,
+    get_mask_for_loss,
 )
 from .vocab import (
     Vocabulary,
@@ -26,7 +27,8 @@ from .vocab import (
 
 
 __all__ = [
-    'EOF',
+    'SpecialTokens',
+    'get_mask_for_loss',
     'count_tokens',
     'tokenize',
     'SMILESDataLoader',

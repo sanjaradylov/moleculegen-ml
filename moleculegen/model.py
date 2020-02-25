@@ -79,7 +79,7 @@ class SMILESRNNModel(gluon.Block):
 
         Parameters
         ----------
-        inputs : mxnet.nd.NDArray, shape = (n_steps, batch_size, vocab_size)
+        inputs : mxnet.nd.NDArray, shape = (batch_size, n_steps)
             Input samples.
         state : list
             Hidden state.

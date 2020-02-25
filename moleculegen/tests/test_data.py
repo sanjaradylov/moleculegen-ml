@@ -37,10 +37,10 @@ class DataLoaderTestCase(unittest.TestCase):
     def test_iter(self):
         sample_size = (self.dataloader.batch_size, self.dataloader.n_steps)
 
-        for x, y in self.dataloader:
+        for x, y, valid_lengths in self.dataloader:
             self.assertEqual(x.shape, sample_size)
             self.assertEqual(y.shape, sample_size)
-            self.assertEqual(x.shape, y.shape)
+            self.assertEqual(x.shape[0], valid_lengths.shape[0])
 
     def tearDown(self):
         self.fh.close()
