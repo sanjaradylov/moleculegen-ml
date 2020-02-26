@@ -14,7 +14,8 @@ from typing import Any, Dict, Union
 from mxnet import autograd, context, gluon, init, metric, nd, optimizer
 
 from moleculegen import (
-    EOF,
+    SpecialTokens,
+    get_mask_for_loss,
     SMILESDataset,
     SMILESDataLoader,
     SMILESRNNModel,
@@ -67,7 +68,7 @@ def main():
         dataset=dataset,
     )
 
-    rnn_layer = gluon.rnn.GRU(
+    rnn_layer = gluon.rnn.LSTM(
         hidden_size=options.hidden_size,
         num_layers=options.n_layers,
         dropout=0.2,
@@ -152,7 +153,7 @@ def train(
 
         perplexity = metric.Perplexity(ignore_label=None)
 
-        for batch_no, (inputs, outputs) in enumerate(dataloader, start=1):
+        for batch_no, batch in enumerate(dataloader, start=1):
             if state is None:
                 state = model.begin_state(
                     batch_size=dataloader.batch_size, ctx=ctx)
@@ -160,12 +161,14 @@ def train(
                 for unit in state:
                     unit.detach()
 
-            inputs = inputs.as_in_context(ctx)
-            outputs = outputs.T.reshape((-1,)).as_in_context(ctx)
+            inputs = batch.x.as_in_context(ctx)
+            outputs = batch.y.T.reshape((-1,)).as_in_context(ctx)
 
             with autograd.record():
                 p_outputs, state = model(inputs, state)
-                loss = loss_fn(p_outputs, outputs).mean()
+                label_mask = get_mask_for_loss(inputs.shape, batch.v_y)
+                label_mask = label_mask.T.reshape((-1,)).as_in_context(ctx)
+                loss = loss_fn(p_outputs, outputs, label_mask).mean()
 
             loss.backward()
             trainer.step(batch_size=1)
@@ -179,7 +182,9 @@ def train(
 
             if batch_no % predict_epoch == 0:
                 generated_molecule = predict(
-                    prefix, model, dataloader.vocab, 50, ctx).strip(EOF)
+                    prefix, model, dataloader.vocab, 50, ctx)
+                generated_molecule = generated_molecule.strip(
+                    SpecialTokens.EOS.value)
                 print(f'Molecule: {generated_molecule}')
 
         if verbose != 0:
@@ -226,7 +231,7 @@ def predict(
         return nd.array([outputs[-1]], ctx=ctx).reshape((1, 1))
 
     state = model.begin_state(batch_size=1, ctx=ctx)
-    outputs = [vocab[prefix[0]]]
+    outputs = vocab[prefix[:]]
 
     for token in prefix[1:]:
         output, state = model(get_input(), state)
@@ -237,7 +242,7 @@ def predict(
 
         output_id = int(output.argmax(axis=1).reshape(1).asscalar())
         char = vocab.idx_to_token[output_id]
-        if char == EOF:
+        if char in (SpecialTokens.EOS.value, SpecialTokens.PAD.value):
             break
 
         outputs.append(output_id)
@@ -265,41 +270,41 @@ def process_options() -> argparse.Namespace:
         '-b', '--batch_size',
         help='The number of batches to generate at every iteration.',
         type=int,
-        default=32,
+        default=128,
     )
     parser.add_argument(
         '-s', '--n_steps',
         help='The number of time steps.',
         type=int,
-        default=40,
+        default=20,
     )
     parser.add_argument(
         '-u', '--hidden_size',
         help="The number of units in a network's hidden state.",
         type=int,
-        default=256,
+        default=1024,
     )
     parser.add_argument(
         '-n', '--n_layers',
         help='The number of hidden layers.',
         type=int,
-        default=1,
+        default=3,
     )
     parser.add_argument(
         '-l', '--learning_rate',
         help='The learning rate.',
         type=float,
-        default=1.0,
+        default=.5,
     )
     parser.add_argument(
         '-e', '--n_epochs',
         help='The number of epochs.',
         type=int,
-        default=2000,
+        default=10,
     )
     parser.add_argument(
         '-p', '--predict_epoch',
-        help='Predict new strings every p epochs.',
+        help='Predict new strings every p iterations.',
         type=int,
         default=20,
     )
@@ -307,12 +312,12 @@ def process_options() -> argparse.Namespace:
         '-v', '--verbose',
         help='Print logs every v iterations.',
         type=int,
-        default=10,
+        default=20,
     )
     parser.add_argument(
         '-c', '--ctx',
         help='CPU or GPU.',
-        default='cpu',
+        default='gpu',
         choices=('cpu', 'CPU', 'gpu', 'GPU'),
     )
     parser.add_argument(

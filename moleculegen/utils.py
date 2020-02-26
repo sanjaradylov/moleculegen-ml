@@ -3,7 +3,7 @@ Utilities.
 """
 
 import enum
-from typing import Tuple
+from typing import NamedTuple, Tuple
 
 from mxnet import nd
 
@@ -16,6 +16,20 @@ class SpecialTokens(enum.Enum):
     EOS = '\n'  # end of string
     UNK = '_'  # unknown token
     PAD = '*'  # padding
+
+
+class Batch(NamedTuple):
+    x: nd.NDArray
+    y: nd.NDArray
+    v_x: nd.NDArray
+    v_y: nd.NDArray
+
+
+Batch.__doc__ += ": Named tuple that stores mini-batch items"
+Batch.x.__doc__ += "\nInput samples."
+Batch.y.__doc__ += "\nOutput samples."
+Batch.v_x.__doc__ += "\nValid lengths for input samples."
+Batch.v_y.__doc__ += "\nValid lengths for output samples."
 
 
 def get_mask_for_loss(

@@ -16,7 +16,7 @@ from typing import AnyStr, Iterator, List, Optional, Tuple
 from mxnet import nd
 from mxnet.gluon.data import SimpleDataset
 
-from .utils import EOF
+from .utils import Batch, SpecialTokens
 from .vocab import Vocabulary
 
 
@@ -57,7 +57,7 @@ class SMILESDataset(SimpleDataset):
             for line in fh:
                 if not line:
                     continue
-                smiles_strings.append(line.strip() + EOF)
+                smiles_strings.append(line.strip() + SpecialTokens.EOS.value)
 
         return smiles_strings
 
@@ -159,7 +159,7 @@ class SMILESDataLoader:
             yield inputs[:, i:i+self.n_steps], outputs[:, i:i+self.n_steps]
 
     # TODO Still, revise sampling methods.
-    def __iter__(self) -> Iterator[Tuple[nd.NDArray, nd.NDArray]]:
+    def __iter__(self) -> Iterator[Batch]:
         """Iterate over the samples of the corpus.
 
         Strategy:
@@ -172,17 +172,17 @@ class SMILESDataLoader:
 
         Yields
         ------
-        mini_batch : tuple
-            inputs : nd.NDArray, shape = (`self.batch_size`, `self.n_steps`)
-            outputs : nd.NDArray, shape = (`self.batch_size`, `self.n_steps`)
+        mini_batch : Batch
+            Mini-batch containing inputs, outputs, and their corresponding
+            valid lengths.
         """
         for i_batch in range(0, len(self.vocab.corpus), self.batch_size):
             curr_slice = slice(i_batch, i_batch + self.batch_size)
-            batch = self.__pad(self.vocab.corpus[curr_slice])
+            batch = self._pad(self.vocab.corpus[curr_slice])
 
             yield from self._iter_steps(batch)
 
-    def _iter_steps(self, batch):
+    def _iter_steps(self, batch: nd.NDArray) -> Iterator[Batch]:
         """Generate batches separated by time steps.
 
         Parameters
@@ -192,18 +192,35 @@ class SMILESDataLoader:
 
         Yields
         ------
-        result : tuple
-            inputs : nd.NDArray, shape = (self.batch_size, self.n_steps)
-            outputs : nd.NDArray, shape = (self.batch_size, self.n_steps)
+        mini_batch : Batch
+            Mini-batch containing inputs, outputs, and their corresponding
+            valid lengths.
         """
-        inputs = batch[:, :-1]
-        outputs = batch[:, 1:]
+
+        # TODO There is a solution not involving matrix lookup.
+        def get_valid_lengths(sample: nd.NDArray) -> nd.NDArray:
+            lengths = []
+
+            # FIXME Iterating over matrix is somewhat brute and ineffective.
+            for seq in sample:
+                for i, s in enumerate(seq):
+                    if s.asscalar() == len(self.vocab):
+                        lengths.append(i)
+                        break
+                else:
+                    lengths.append(sample.shape[1])
+
+            return nd.array(lengths, dtype=int)
+
+        inputs, outputs = batch[:, :-1], batch[:, 1:]
 
         for i_step in range(0, batch.shape[1] - self.n_steps):
             step_slice = slice(i_step, i_step + self.n_steps)
-            yield inputs[:, step_slice], outputs[:, step_slice]
+            x, y = inputs[:, step_slice], outputs[:, step_slice]
 
-    def __pad(self, item_lists: List[List[int]]) -> nd.NDArray:
+            yield Batch(x, y, get_valid_lengths(x), get_valid_lengths(y))
+
+    def _pad(self, item_lists: List[List[int]]) -> nd.NDArray:
         """Get a batch of SMILES token lists and fill with the `PAD` token ids
         those lists with lesser number of tokens.
 
@@ -215,8 +232,8 @@ class SMILESDataLoader:
 
         Returns
         -------
-        new_item_list : nd.NDArray
-             The array of token lists.
+        new_item_list : nd.NDArray, shape = (self.batch_size, max_len)
+            The array of token lists.
         """
         max_len = max(map(len, item_lists))
         pad_token_idx = len(self.vocab)
