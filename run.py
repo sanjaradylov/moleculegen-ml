@@ -75,8 +75,8 @@ def main():
     )
     dense_layer = gluon.nn.Sequential()
     dense_layer.add(
-        gluon.nn.Dense(256, activation='relu'),
-        gluon.nn.Dropout(0.2),
+        # gluon.nn.Dense(256, activation='relu'),
+        # gluon.nn.Dropout(0.2),
         gluon.nn.Dense(len(dataloader.vocab)),
     )
     model = SMILESRNNModel(
@@ -87,6 +87,7 @@ def main():
     optimizer_params = {
         'learning_rate': options.learning_rate,
         'clip_gradient': 5,
+        'wd': 1,
     }
     ctx = {
         'cpu': context.cpu(0),
@@ -147,16 +148,16 @@ def train(
     """
     model.initialize(ctx=ctx, force_reinit=True, init=init.Xavier())
     trainer = gluon.Trainer(model.collect_params(), opt, optimizer_params)
-    state = None
 
     for epoch in range(1, n_epochs + 1):
 
+        state = None
         perplexity = metric.Perplexity(ignore_label=None)
 
         for batch_no, batch in enumerate(dataloader, start=1):
-            if state is None:
+            if batch.s:
                 state = model.begin_state(
-                    batch_size=dataloader.batch_size, ctx=ctx)
+                    batch_size=batch.x.shape[0], ctx=ctx)
             else:
                 for unit in state:
                     unit.detach()
@@ -177,7 +178,7 @@ def train(
             if batch_no % verbose == 0:
                 print(
                     f'Loss: {loss.asscalar():>4.3f}, '
-                    f'Perplexity {perplexity.get()[1]:>4.3f}'
+                    f'Perplexity: {perplexity.get()[1]:>4.3f}'
                 )
 
             if batch_no % predict_epoch == 0:
@@ -188,7 +189,7 @@ def train(
                 print(f'Molecule: {generated_molecule}')
 
         if verbose != 0:
-            print(f'\nEpoch {epoch:>4}\n')
+            print(f'\nEpoch: {epoch:>4}\n')
 
 
 def predict(

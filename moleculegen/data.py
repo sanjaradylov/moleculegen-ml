@@ -214,11 +214,14 @@ class SMILESDataLoader:
 
         inputs, outputs = batch[:, :-1], batch[:, 1:]
 
-        for i_step in range(0, batch.shape[1] - self.n_steps):
+        s = True
+        for i_step in range(0, inputs.shape[1], self.n_steps):
             step_slice = slice(i_step, i_step + self.n_steps)
             x, y = inputs[:, step_slice], outputs[:, step_slice]
 
-            yield Batch(x, y, get_valid_lengths(x), get_valid_lengths(y))
+            yield Batch(x, y, get_valid_lengths(x), get_valid_lengths(y), s)
+
+            s = False
 
     def _pad(self, item_lists: List[List[int]]) -> nd.NDArray:
         """Get a batch of SMILES token lists and fill with the `PAD` token ids
@@ -235,7 +238,15 @@ class SMILESDataLoader:
         new_item_list : nd.NDArray, shape = (self.batch_size, max_len)
             The array of token lists.
         """
+        # Get the maximum string length among all entries in a batch.
         max_len = max(map(len, item_lists))
+        # Make it divisible by self.n_steps so that we can iterate over the
+        # batch max_len // self.n_steps times and retrieve self.n_steps tokens.
+        max_len = (max_len // self.n_steps + 1) * self.n_steps
+        # Increment it since we divide `batch` into
+        # (batch[:, :-1], batch[:, 1:]).
+        max_len += 1
+
         pad_token_idx = len(self.vocab)
         new_items_list = []
 

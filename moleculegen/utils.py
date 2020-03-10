@@ -23,6 +23,7 @@ class Batch(NamedTuple):
     y: nd.NDArray
     v_x: nd.NDArray
     v_y: nd.NDArray
+    s: bool
 
 
 Batch.__doc__ += ": Named tuple that stores mini-batch items"
@@ -30,6 +31,7 @@ Batch.x.__doc__ += "\nInput samples."
 Batch.y.__doc__ += "\nOutput samples."
 Batch.v_x.__doc__ += "\nValid lengths for input samples."
 Batch.v_y.__doc__ += "\nValid lengths for output samples."
+Batch.s.__doc__ += "\nWhether to initialize state or not."
 
 
 def get_mask_for_loss(
