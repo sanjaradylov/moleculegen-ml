@@ -37,24 +37,24 @@ def main():
         -h, --help      show this help message and exit
         -b BATCH_SIZE, --batch_size BATCH_SIZE
                         The number of batches to generate at every iteration.
-                        (default: 32)
+                        (default: 128)
         -s N_STEPS, --n_steps N_STEPS
-                        The number of time steps. (default: 40)
+                        The number of time steps. (default: 20)
         -u HIDDEN_SIZE, --hidden_size HIDDEN_SIZE
                         The number of units in a network's hidden state.
-                        (default: 256)
+                        (default: 1024)
         -n N_LAYERS, --n_layers N_LAYERS
-                        The number of hidden layers. (default: 1)
+                        The number of hidden layers. (default: 3)
         -l LEARNING_RATE, --learning_rate LEARNING_RATE
-                        The learning rate. (default: 1.0)
+                        The learning rate. (default: 0.5)
         -e N_EPOCHS, --n_epochs N_EPOCHS
-                        The number of epochs. (default: 2000)
+                        The number of epochs. (default: 20)
         -p PREDICT_EPOCH, --predict_epoch PREDICT_EPOCH
-                        Predict new strings every p epochs (default: 20)
+                        Predict new strings every p epochs (default: 50)
         -v VERBOSE, --verbose VERBOSE
-                        Print logs every v iterations. (default: 10)
+                        Print logs every v iterations. (default: 50)
         -c {cpu,CPU,gpu,GPU}, --ctx {cpu,CPU,gpu,GPU}
-                        CPU or GPU (default: cpu)
+                        CPU or GPU (default: gpu)
         -r PREFIX, --prefix PREFIX
                         Initial symbol(s) of a SMILES string to generate.
                         (default: C)
@@ -301,19 +301,19 @@ def process_options() -> argparse.Namespace:
         '-e', '--n_epochs',
         help='The number of epochs.',
         type=int,
-        default=10,
+        default=20,
     )
     parser.add_argument(
         '-p', '--predict_epoch',
         help='Predict new strings every p iterations.',
         type=int,
-        default=20,
+        default=50,
     )
     parser.add_argument(
         '-v', '--verbose',
         help='Print logs every v iterations.',
         type=int,
-        default=20,
+        default=50,
     )
     parser.add_argument(
         '-c', '--ctx',

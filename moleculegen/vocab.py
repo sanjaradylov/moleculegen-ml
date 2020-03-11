@@ -111,7 +111,7 @@ class Vocabulary:
             dataset: Optional[SimpleDataset] = None,
             tokens: Optional[List[str]] = None,
             counter: Optional[Counter[str]] = None,
-            need_corpus: Optional[bool] = False,
+            need_corpus: bool = False,
     ):
         assert not (need_corpus and dataset is None and tokens is None), \
             "If you wish to load corpus, specify the original data set."
@@ -135,8 +135,8 @@ class Vocabulary:
         self.token_freqs = dict(sorted(
             counter.items(), key=lambda c: c[1], reverse=True))
 
-        self._idx_to_token = [SpecialTokens.UNK.value]
-        self._token_to_idx = {SpecialTokens.UNK.value: 0}
+        self._idx_to_token: List[str] = [SpecialTokens.UNK.value]
+        self._token_to_idx: Dict[str, int] = {SpecialTokens.UNK.value: 0}
         for token in counter.keys():
             self._idx_to_token.append(token)
             self._token_to_idx[token] = len(self._token_to_idx)
@@ -145,6 +145,10 @@ class Vocabulary:
 
     def __len__(self) -> int:
         """Return the number of unique tokens (SMILES characters).
+
+        Returns
+        -------
+        n : int
         """
         return len(self._idx_to_token)
 
@@ -171,19 +175,31 @@ class Vocabulary:
 
     @property
     def idx_to_token(self) -> List[str]:
-        """Get list of tokens.
+        """The list of unique tokens.
+
+        Returns
+        -------
+        idx_to_token : list
         """
         return self._idx_to_token
 
     @property
     def token_to_idx(self) -> Dict[str, int]:
-        """Get token-to-id mapping.
+        """The token-to-id mapping.
+
+        Returns
+        -------
+        token_to_idx : dict
         """
         return self._token_to_idx
 
     @property
     def all_tokens(self) -> List[List[str]]:
-        """Return original data set as list of tokens.
+        """The original data set as list of tokens.
+
+        Returns
+        -------
+        all_tokens : list
         """
         if not self._need_corpus:
             warnings.warn(
@@ -192,7 +208,11 @@ class Vocabulary:
         return self._all_tokens
 
     def get_tokens(self, indices: List[int]) -> List[str]:
-        """Get tokens from indices.
+        """Return the tokens corresponding to the indices.
+
+        Returns
+        -------
+        tokens : list
         """
         return [self._idx_to_token[index] for index in indices]
 
