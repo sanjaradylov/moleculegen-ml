@@ -13,6 +13,7 @@ from .data import (
     SMILESDataLoader,
 )
 from .model import (
+    OneHotEncoder,
     SMILESRNNModel,
 )
 from .utils import (
@@ -31,6 +32,7 @@ __all__ = [
     'get_mask_for_loss',
     'count_tokens',
     'tokenize',
+    'OneHotEncoder',
     'SMILESDataLoader',
     'SMILESDataset',
     'SMILESRNNModel',

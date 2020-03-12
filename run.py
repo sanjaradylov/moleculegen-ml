@@ -16,6 +16,7 @@ from mxnet import autograd, context, gluon, init, metric, nd, optimizer
 from moleculegen import (
     SpecialTokens,
     get_mask_for_loss,
+    OneHotEncoder,
     SMILESDataset,
     SMILESDataLoader,
     SMILESRNNModel,
@@ -68,6 +69,7 @@ def main():
         dataset=dataset,
     )
 
+    embedding_layer = OneHotEncoder(len(dataloader.vocab))
     rnn_layer = gluon.rnn.LSTM(
         hidden_size=options.hidden_size,
         num_layers=options.n_layers,
@@ -80,9 +82,9 @@ def main():
         gluon.nn.Dense(len(dataloader.vocab)),
     )
     model = SMILESRNNModel(
+        embedding_layer=embedding_layer,
         rnn_layer=rnn_layer,
         dense_layer=dense_layer,
-        vocab_size=len(dataloader.vocab),
     )
     optimizer_params = {
         'learning_rate': options.learning_rate,
@@ -179,6 +181,19 @@ def train(
                 print(
                     f'Loss: {loss.asscalar():>4.3f}, '
                     f'Perplexity: {perplexity.get()[1]:>4.3f}'
+                )
+                params = model.collect_params()
+                print(
+                    params['lstm0_l0_i2h_weight'].data().norm().asscalar(),
+                    params['lstm0_l0_i2h_weight'].data().grad.norm().asscalar(),
+                    params['lstm0_l0_h2h_weight'].data().norm().asscalar(),
+                    params['lstm0_l0_h2h_weight'].data().grad.norm().asscalar(),
+                    params['lstm0_l1_i2h_weight'].data().norm().asscalar(),
+                    params['lstm0_l1_i2h_weight'].data().grad.norm().asscalar(),
+                    params['lstm0_l1_h2h_weight'].data().norm().asscalar(),
+                    params['lstm0_l1_h2h_weight'].data().grad.norm().asscalar(),
+                    params['dense0_weight'].data().norm().asscalar(),
+                    params['dense0_weight'].data().grad.norm().asscalar(),
                 )
 
             if batch_no % predict_epoch == 0:
