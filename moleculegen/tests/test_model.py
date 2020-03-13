@@ -4,7 +4,7 @@ Test `SMILESRNNModel` class and its main components.
 
 import unittest
 
-from mxnet import nd, gluon
+from mxnet import gluon, np, npx
 
 from moleculegen.model import OneHotEncoder, SMILESRNNModel
 
@@ -30,7 +30,7 @@ class SMILESRNNModelTestCase(unittest.TestCase):
 
         # Initialize categories.
         self.batch_shape = (64, 8)  # Number of samples and time steps.
-        self.samples = nd.random.randint(0, 6, shape=self.batch_shape)
+        self.samples = np.random.randint(0, 6, size=self.batch_shape)
 
     def test_intermediate_steps(self):
         # One-hot encoding.
@@ -80,4 +80,5 @@ class SMILESRNNModelTestCase(unittest.TestCase):
 
 
 if __name__ == '__main__':
+    npx.set_np()
     unittest.main()

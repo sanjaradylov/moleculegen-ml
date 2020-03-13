@@ -7,8 +7,8 @@ SMILESRNNModel
     Recurrent neural network to encode-decode SMILES strings.
 """
 
-from typing import Callable, List, Tuple, Union
-from mxnet import gluon, nd
+from typing import List, Tuple, Union
+from mxnet import gluon, np, npx
 
 
 class OneHotEncoder:
@@ -24,17 +24,17 @@ class OneHotEncoder:
     def __init__(self, depth: int):
         self.depth = depth
 
-    def __call__(self, indices: nd.NDArray, *args, **kwargs) -> nd.NDArray:
+    def __call__(self, indices: np.ndarray, *args, **kwargs) -> np.ndarray:
         """Return one-hot encoded tensor.
 
         Parameters
         ----------
-        indices : nd.NDArray
+        indices : np.ndarray
             The indices (categories) to encode.
         *args, **kwargs
             Additional arguments for `nd.one_hot`.
         """
-        return nd.one_hot(indices, self.depth, *args, **kwargs)
+        return npx.one_hot(indices, self.depth, *args, **kwargs)
 
 
 class SMILESRNNModel(gluon.Block):
@@ -79,36 +79,35 @@ class SMILESRNNModel(gluon.Block):
     def begin_state(
             self,
             batch_size: int = 0,
-            func: Callable = nd.zeros,
             **kwargs,
-    ) -> List[nd.NDArray]:
+    ) -> List[np.ndarray]:
         """Return initial state for each element in mini-batch.
 
         Parameters
         ----------
         batch_size : int, default 0
             Batch size.
-        func : callable, default mxnet.nd.zeros
-            Function to create initial state.
+        **kwargs
+            Additional arguments for RNN layer's `begin_state` method including
+            callable `func` argument for creating initial state.
 
         Returns
         -------
         state : list
             Initial state.
         """
-        return self.rnn_layer.begin_state(
-            batch_size=batch_size, func=func, **kwargs)
+        return self.rnn_layer.begin_state(batch_size=batch_size, **kwargs)
 
     def forward(
             self,
-            inputs: nd.NDArray,
-            state: List[nd.NDArray],
-    ) -> Tuple[nd.NDArray, List[nd.NDArray]]:
+            inputs: np.ndarray,
+            state: List[np.ndarray],
+    ) -> Tuple[np.ndarray, List[np.ndarray]]:
         """Run forward computation.
 
         Parameters
         ----------
-        inputs : mxnet.nd.NDArray, shape = (batch_size, n_steps)
+        inputs : mxnet.np.ndarray, shape = (batch_size, n_steps)
             Input samples.
         state : list
             Hidden state.
@@ -116,7 +115,7 @@ class SMILESRNNModel(gluon.Block):
         Returns
         -------
         output : tuple
-            X : mxnet.nd.NDArray, shape = (n_steps, batch_size, vocab_size)
+            X : mxnet.np.ndarray, shape = (n_steps, batch_size, vocab_size)
                 Output at current step.
             H : list
                 Hidden state output.

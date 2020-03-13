@@ -11,9 +11,9 @@ SMILESDataLoader
 
 import io
 import warnings
-from typing import cast, AnyStr, Iterator, List, Optional, Tuple
+from typing import AnyStr, Iterator, List, Optional, Tuple
 
-from mxnet import nd
+from mxnet import np
 from mxnet.gluon.data import SimpleDataset
 
 from .utils import Batch, SpecialTokens
@@ -165,22 +165,22 @@ class SMILESDataLoader:
         assert n_steps >= 1, 'Number of steps must be positive non-zero.'
         self.__n_steps = n_steps
 
-    def sequential_sample(self) -> Iterator[Tuple[nd.NDArray, nd.NDArray]]:
+    def sequential_sample(self) -> Iterator[Tuple[np.ndarray, np.ndarray]]:
         """Iterate over the samples of the corpus.
         Strategy: sequential partitioning.
 
         Yields
         ------
         sample : tuple
-            inputs : mxnet.nd.NDArray
-            outputs : mxnet.nd.NDArray
+            inputs : mxnet.np.ndarray
+            outputs : mxnet.np.ndarray
         """
         warnings.warn(
             "This sampling method might be ineffective; try using iter.",
             category=DeprecationWarning,
         )
 
-        offset = nd.random.randint(0, self.n_steps).asscalar()
+        offset = np.random.randint(0, self.n_steps).asscalar()
         n_idx = (
             (
                 (len(self._vocab.corpus) - offset - 1)
@@ -189,9 +189,9 @@ class SMILESDataLoader:
             * self.batch_size
         )
 
-        inputs = nd.array(self._vocab.corpus[offset:(offset+n_idx)])
+        inputs = np.array(self._vocab.corpus[offset:(offset+n_idx)])
         inputs = inputs.reshape((self.batch_size, -1))
-        outputs = nd.array(self._vocab.corpus[(offset+1):(offset+1+n_idx)])
+        outputs = np.array(self._vocab.corpus[(offset+1):(offset+1+n_idx)])
         outputs = outputs.reshape((self.batch_size, -1))
 
         self.n_batches = inputs.shape[1] // self.n_steps
@@ -222,12 +222,12 @@ class SMILESDataLoader:
 
             yield from self._iter_steps(batch)
 
-    def _iter_steps(self, batch: nd.NDArray) -> Iterator[Batch]:
+    def _iter_steps(self, batch: np.ndarray) -> Iterator[Batch]:
         """Generate batches separated by time steps.
 
         Parameters
         ----------
-        batch : nd.NDArray, shape = (self.batch_size, max_smiles_len)
+        batch : np.ndarray, shape = (self.batch_size, max_smiles_len)
             Batch.
 
         Yields
@@ -238,18 +238,18 @@ class SMILESDataLoader:
         """
 
         # TODO There is a solution not involving matrix lookup.
-        def get_valid_lengths(sample: nd.NDArray) -> nd.NDArray:
+        def get_valid_lengths(sample: np.ndarray) -> np.ndarray:
             """For every entry in `sample`, return the lengths of subsequences
             containing any valid SMILES tokens excluding padding token.
 
             Parameters
             ----------
-            sample : nd.NDArray, shape = (self.batch_size - 1, max_len)
+            sample : np.ndarray, shape = (self.batch_size - 1, max_len)
                 Input or output sample.
 
             Returns
             -------
-            valid_lengths : nd.NDArray, shape = self.batch_size - 1
+            valid_lengths : np.ndarray, shape = self.batch_size - 1
                 Valid lengths for every entry.
             """
             lengths: List[int] = []
@@ -257,13 +257,13 @@ class SMILESDataLoader:
             # FIXME Iterating over matrix is somewhat brute and ineffective.
             for seq in sample:
                 for i, s in enumerate(seq):
-                    if s.asscalar() == len(self._vocab):
+                    if s == len(self._vocab):
                         lengths.append(i)
                         break
                 else:
                     lengths.append(sample.shape[1])
 
-            return nd.array(lengths, dtype=int)
+            return np.array(lengths, dtype=int)
 
         inputs, outputs = batch[:, :-1], batch[:, 1:]
 
@@ -276,7 +276,7 @@ class SMILESDataLoader:
 
             h = False
 
-    def _pad(self, item_lists: List[List[int]]) -> nd.NDArray:
+    def _pad(self, item_lists: List[List[int]]) -> np.ndarray:
         """Get a batch of SMILES token lists and fill with the `PAD` token ids
         those lists with lesser number of tokens.
 
@@ -288,7 +288,7 @@ class SMILESDataLoader:
 
         Returns
         -------
-        new_item_list : nd.NDArray, shape = (self.batch_size, max_len)
+        new_item_list : np.ndarray, shape = (self.batch_size, max_len)
             The array of token lists.
         """
         # Get the maximum string length among all entries in a batch.
@@ -311,5 +311,4 @@ class SMILESDataLoader:
             else:
                 new_items_list.append(item_list)
 
-        new_items_list = nd.array(new_items_list, dtype=int)
-        return cast(nd.NDArray, new_items_list)
+        return np.array(new_items_list, dtype=int)

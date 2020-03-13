@@ -1,1 +1,1 @@
-mxnet-cu101mkl
+mxnet-cu101mkl==1.6.0

@@ -11,7 +11,7 @@ __author__ = 'Sanjar Ad[iy]lov'
 import argparse
 from typing import Any, Dict, Union
 
-from mxnet import autograd, context, gluon, init, metric, nd, optimizer
+from mxnet import autograd, context, gluon, init, metric, np, npx, optimizer
 
 from moleculegen import (
     SpecialTokens,
@@ -154,7 +154,8 @@ def train(
     for epoch in range(1, n_epochs + 1):
 
         state = None
-        perplexity = metric.Perplexity(ignore_label=None)
+        # TODO Perplexity doesn't support numpy arrays; implement from scratch.
+        # perplexity = metric.Perplexity(ignore_label=None)
 
         for batch_no, batch in enumerate(dataloader, start=1):
             if batch.s:
@@ -175,25 +176,12 @@ def train(
 
             loss.backward()
             trainer.step(batch_size=1)
-            perplexity.update(outputs, p_outputs.softmax())
+            # perplexity.update(outputs, p_outputs.softmax())
 
             if batch_no % verbose == 0:
                 print(
-                    f'Loss: {loss.asscalar():>4.3f}, '
-                    f'Perplexity: {perplexity.get()[1]:>4.3f}'
-                )
-                params = model.collect_params()
-                print(
-                    params['lstm0_l0_i2h_weight'].data().norm().asscalar(),
-                    params['lstm0_l0_i2h_weight'].data().grad.norm().asscalar(),
-                    params['lstm0_l0_h2h_weight'].data().norm().asscalar(),
-                    params['lstm0_l0_h2h_weight'].data().grad.norm().asscalar(),
-                    params['lstm0_l1_i2h_weight'].data().norm().asscalar(),
-                    params['lstm0_l1_i2h_weight'].data().grad.norm().asscalar(),
-                    params['lstm0_l1_h2h_weight'].data().norm().asscalar(),
-                    params['lstm0_l1_h2h_weight'].data().grad.norm().asscalar(),
-                    params['dense0_weight'].data().norm().asscalar(),
-                    params['dense0_weight'].data().grad.norm().asscalar(),
+                    f'Loss: {loss}'
+                    # f'Perplexity: {perplexity.get()[1]:>4.3f}'
                 )
 
             if batch_no % predict_epoch == 0:
@@ -235,16 +223,16 @@ def predict(
         Predicted (generated) SMILES string.
     """
 
-    def get_input() -> nd.NDArray:
+    def get_input() -> np.ndarray:
         """Get the last token from the output at current step.
 
         Returns
         -------
-        token_nd : mxnet.nd.NDArray
+        token_nd : mxnet.np.ndarray
             The last token at current step.
         """
         nonlocal outputs
-        return nd.array([outputs[-1]], ctx=ctx).reshape((1, 1))
+        return np.array([outputs[-1]], ctx=ctx).reshape((1, 1))
 
     state = model.begin_state(batch_size=1, ctx=ctx)
     outputs = vocab[prefix[:]]
@@ -256,7 +244,7 @@ def predict(
     for step in range(n_steps):
         output, state = model(get_input(), state)
 
-        output_id = int(output.argmax(axis=1).reshape(1).asscalar())
+        output_id = int(output.argmax(axis=1).reshape(1))
         char = vocab.idx_to_token[output_id]
         if char in (SpecialTokens.EOS.value, SpecialTokens.PAD.value):
             break
@@ -345,4 +333,6 @@ def process_options() -> argparse.Namespace:
     return parser.parse_args()
 
 
-main()
+if __name__ == '__main__':
+    npx.set_np()
+    main()

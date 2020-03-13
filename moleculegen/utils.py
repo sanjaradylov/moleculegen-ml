@@ -5,7 +5,7 @@ Utilities.
 import enum
 from typing import NamedTuple, Tuple
 
-from mxnet import nd
+from mxnet import np, npx
 
 
 @enum.unique
@@ -19,10 +19,10 @@ class SpecialTokens(enum.Enum):
 
 
 class Batch(NamedTuple):
-    x: nd.NDArray
-    y: nd.NDArray
-    v_x: nd.NDArray
-    v_y: nd.NDArray
+    x: np.ndarray
+    y: np.ndarray
+    v_x: np.ndarray
+    v_y: np.ndarray
     s: bool
 
 
@@ -36,8 +36,8 @@ Batch.s.__doc__ += "\nWhether to initialize state or not."
 
 def get_mask_for_loss(
         label_shape: Tuple[int, ...],
-        valid_lengths: nd.NDArray,
-) -> nd.NDArray:
+        valid_lengths: np.ndarray,
+) -> np.ndarray:
     """Get mask of valid labels, i.e. SpecialTokens.PAD.value is invalid,
     therefore filled with zeros, and other tokens retain their weights = 1.
 
@@ -45,14 +45,14 @@ def get_mask_for_loss(
     ----------
     label_shape : tuple of int
         Label shape.
-    valid_lengths : nd.NDArray, shape = label_shape[0]
+    valid_lengths : np.ndarray, shape = label_shape[0]
         For every entry in labels, specified valid token length.
 
     Returns
     -------
-    label_mask : nd.NDArray, shape = label_shape
+    label_mask : np.ndarray, shape = label_shape
         Mask of valid labels.
     """
-    label_weights = nd.ones(label_shape).expand_dims(axis=-1)
-    label_mask = nd.SequenceMask(label_weights, valid_lengths, True, axis=1)
+    label_weights = np.expand_dims(np.ones(label_shape), axis=-1)
+    label_mask = npx.sequence_mask(label_weights, valid_lengths, True, axis=1)
     return label_mask
