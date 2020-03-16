@@ -3,9 +3,9 @@ Utilities.
 """
 
 import enum
-from typing import NamedTuple, Tuple
+from typing import NamedTuple, Sequence, Tuple, Union
 
-from mxnet import np, npx
+from mxnet import metric, np, npx
 
 
 @enum.unique
@@ -32,6 +32,52 @@ Batch.y.__doc__ += "\nOutput samples."
 Batch.v_x.__doc__ += "\nValid lengths for input samples."
 Batch.v_y.__doc__ += "\nValid lengths for output samples."
 Batch.s.__doc__ += "\nWhether to initialize state or not."
+
+
+class Perplexity(metric.Perplexity):
+    """Re-implementation of mxnet.metrics.Perplexity that supports Numpy
+    ndarrays. See the documentation for more information.
+    """
+
+    def update(
+            self,
+            labels: Union[np.ndarray, Sequence[np.ndarray]],
+            predictions: Union[np.ndarray, Sequence[np.ndarray]],
+    ):
+        """Updates the internal evaluation result.
+
+        Parameters
+        ----------
+        labels : sequence of mxnet.np.ndarray
+            The labels of the data.
+
+        predictions : sequence of mxnet.np.ndarray
+            Predicted values.
+
+        See the documentation for more information.
+        """
+        if len(labels) != len(predictions):
+            raise ValueError(
+                f"Labels vs. Predictions size mismatch: "
+                f"{len(labels)} vs. {len(predictions)}"
+            )
+
+        loss = 0.0
+        num = 0
+
+        for label, prediction in zip(labels, predictions):
+            probability = prediction[label.astype(np.int32).item()]
+            if self.ignore_label is not None:
+                ignore = (label == self.ignore_label).astype(prediction.dtype)
+                num -= ignore.astype(np.int32).item()
+                probability = probability * (1 - ignore) + ignore
+            loss -= np.sum(np.log(np.maximum(1e-10, probability))).item()
+            num += 1
+
+        self.sum_metric += loss
+        self.global_sum_metric += loss
+        self.num_inst += num
+        self.global_num_inst += num
 
 
 def get_mask_for_loss(

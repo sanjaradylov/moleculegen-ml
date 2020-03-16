@@ -11,12 +11,13 @@ __author__ = 'Sanjar Ad[iy]lov'
 import argparse
 from typing import Any, Dict, Union
 
-from mxnet import autograd, context, gluon, init, metric, np, npx, optimizer
+from mxnet import autograd, context, gluon, init, np, npx, optimizer
 
 from moleculegen import (
     SpecialTokens,
     get_mask_for_loss,
     OneHotEncoder,
+    # Perplexity,
     SMILESDataset,
     SMILESDataLoader,
     SMILESRNNModel,
@@ -150,12 +151,16 @@ def train(
     """
     model.initialize(ctx=ctx, force_reinit=True, init=init.Xavier())
     trainer = gluon.Trainer(model.collect_params(), opt, optimizer_params)
+    # padding_label = len(dataloader.vocab) - 1
 
     for epoch in range(1, n_epochs + 1):
 
+        if verbose != 0:
+            print(f'\nEpoch: {epoch:>3}\n')
+
         state = None
-        # TODO Perplexity doesn't support numpy arrays; implement from scratch.
-        # perplexity = metric.Perplexity(ignore_label=None)
+        # FIXME For some reason, metrics from mxnet.metric decelerate GPU work.
+        # perplexity = Perplexity(ignore_label=padding_label)
 
         for batch_no, batch in enumerate(dataloader, start=1):
             if batch.s:
@@ -172,15 +177,15 @@ def train(
                 p_outputs, state = model(inputs, state)
                 label_mask = get_mask_for_loss(inputs.shape, batch.v_y)
                 label_mask = label_mask.T.reshape((-1,)).as_in_context(ctx)
-                loss = loss_fn(p_outputs, outputs, label_mask).mean()
+                loss = loss_fn(p_outputs, outputs, label_mask)
 
             loss.backward()
-            trainer.step(batch_size=1)
-            # perplexity.update(outputs, p_outputs.softmax())
+            trainer.step(batch_size=batch.x.shape[0])
+            # perplexity.update(outputs, npx.softmax(p_outputs))
 
             if batch_no % verbose == 0:
                 print(
-                    f'Loss: {loss}'
+                    f'Loss: {loss.mean().item():>3.3f}'
                     # f'Perplexity: {perplexity.get()[1]:>4.3f}'
                 )
 
@@ -190,9 +195,6 @@ def train(
                 generated_molecule = generated_molecule.strip(
                     SpecialTokens.EOS.value)
                 print(f'Molecule: {generated_molecule}')
-
-        if verbose != 0:
-            print(f'\nEpoch: {epoch:>4}\n')
 
 
 def predict(

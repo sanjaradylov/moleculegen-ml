@@ -257,7 +257,7 @@ class SMILESDataLoader:
             # FIXME Iterating over matrix is somewhat brute and ineffective.
             for seq in sample:
                 for i, s in enumerate(seq):
-                    if s == len(self._vocab):
+                    if s == len(self._vocab) - 1:
                         lengths.append(i)
                         break
                 else:
@@ -269,8 +269,8 @@ class SMILESDataLoader:
 
         h = True
         for i_step in range(0, inputs.shape[1], self.n_steps):
-            step_slice = slice(i_step, i_step + self.n_steps)
-            x, y = inputs[:, step_slice], outputs[:, step_slice]
+            step_slice = (..., slice(i_step, i_step + self.n_steps))
+            x, y = inputs[step_slice], outputs[step_slice]
 
             yield Batch(x, y, get_valid_lengths(x), get_valid_lengths(y), h)
 
@@ -300,7 +300,7 @@ class SMILESDataLoader:
         # (batch[:, :-1], batch[:, 1:]).
         max_len += 1
 
-        pad_token_idx = len(self._vocab)
+        pad_token_idx = len(self._vocab) - 1
         new_items_list: List[List[int]] = []
 
         for item_list in item_lists:

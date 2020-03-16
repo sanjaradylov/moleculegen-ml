@@ -135,8 +135,8 @@ class Vocabulary:
         self.token_freqs = dict(sorted(
             counter.items(), key=lambda c: c[1], reverse=True))
 
-        self._idx_to_token: List[str] = [SpecialTokens.UNK.value]
-        self._token_to_idx: Dict[str, int] = {SpecialTokens.UNK.value: 0}
+        self._idx_to_token: List[str] = []
+        self._token_to_idx: Dict[str, int] = {}
         for token in counter.keys():
             self._idx_to_token.append(token)
             self._token_to_idx[token] = len(self._token_to_idx)
