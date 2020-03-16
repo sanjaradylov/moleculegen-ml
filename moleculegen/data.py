@@ -13,7 +13,7 @@ import io
 import warnings
 from typing import AnyStr, Iterator, List, Optional, Tuple
 
-from mxnet import nd
+from mxnet import np
 from mxnet.gluon.data import SimpleDataset
 
 from .utils import Batch, SpecialTokens
@@ -28,20 +28,40 @@ class SMILESDataset(SimpleDataset):
     ----------
     filename : str
         Path to the text file.
-    encoding : str, default 'ascii'
+    encoding : {'ascii', 'utf8'}, default 'ascii'
         File encoding format.
     """
 
     def __init__(
             self,
             filename: AnyStr,
-            encoding: Optional[str] = 'ascii',
+            encoding: str = 'ascii',
     ):
-        self._filename = filename
-        self._encoding = encoding
+        self.__filename = filename
+        self.__encoding = encoding
 
         smiles_strings = self._read()
         super().__init__(smiles_strings)
+
+    @property
+    def filename(self):
+        """The filename of the data set to read.
+
+        Returns
+        -------
+        filename : str
+        """
+        return self.__filename
+
+    @property
+    def encoding(self):
+        """The file encoding format.
+
+        Returns
+        -------
+        encoding : {'ascii', 'utf8'}
+        """
+        return self.__encoding
 
     def _read(self) -> List[str]:
         """Read SMILES strings from the specified filename.
@@ -51,9 +71,9 @@ class SMILESDataset(SimpleDataset):
         smiles_strings : list
             Non-empty SMILES strings.
         """
-        smiles_strings = []
+        smiles_strings: List[str] = []
 
-        with io.open(self._filename, encoding=self._encoding) as fh:
+        with io.open(self.__filename, encoding=self.__encoding) as fh:
             for line in fh:
                 if not line:
                     continue
@@ -83,75 +103,95 @@ class SMILESDataLoader:
             self,
             batch_size: int,
             n_steps: int,
-            dataset: SMILESDataset = None,
-            vocab: Vocabulary = None,
+            dataset: Optional[SMILESDataset] = None,
+            vocab: Optional[Vocabulary] = None,
     ):
         assert dataset or vocab, 'Pass either `dataset` or `vocab`.'
 
-        self.__vocab = vocab or Vocabulary(dataset=dataset, need_corpus=True)
+        self._vocab = vocab or Vocabulary(dataset=dataset, need_corpus=True)
 
         self.batch_size = batch_size
         self.n_steps = n_steps
 
     @property
     def vocab(self) -> Vocabulary:
-        """Return the corpus of the original data set.
+        """The corpus of the original data set.
+
+        Returns
+        -------
+        vocab : Vocabulary
         """
-        return self.__vocab
+        return self._vocab
 
     @property
     def batch_size(self) -> int:
-        """Return the number of samples to generate at each step.
+        """The number of samples to generate at each step.
+
+        Returns
+        -------
+        batch_size : int
         """
-        return self._batch_size
+        return self.__batch_size
 
     @batch_size.setter
     def batch_size(self, batch_size: int):
-        """Update the number of samples (mini-batches).
+        """Set the number of samples (mini-batches).
+
+        Parameters
+        ----------
+        batch_size : int
         """
         assert batch_size >= 1, 'Batch size must be positive non-zero.'
-        self._batch_size = batch_size
+        self.__batch_size = batch_size
 
     @property
     def n_steps(self) -> int:
         """Return the number of steps.
+
+        Returns
+        -------
+        n_steps : int
         """
-        return self._n_steps
+        return self.__n_steps
 
     @n_steps.setter
     def n_steps(self, n_steps: int):
-        """Update the number of (time) steps.
+        """Set the number of (time) steps.
+
+        Parameters
+        ----------
+        n_steps : int
         """
         assert n_steps >= 1, 'Number of steps must be positive non-zero.'
-        self._n_steps = n_steps
+        self.__n_steps = n_steps
 
-    def sequential_sample(self) -> Iterator[Tuple[nd.NDArray, nd.NDArray]]:
+    def sequential_sample(self) -> Iterator[Tuple[np.ndarray, np.ndarray]]:
         """Iterate over the samples of the corpus.
         Strategy: sequential partitioning.
 
         Yields
         ------
         sample : tuple
-            inputs : mxnet.nd.NDArray
-            outputs : mxnet.nd.NDArray
+            inputs : mxnet.np.ndarray
+            outputs : mxnet.np.ndarray
         """
         warnings.warn(
             "This sampling method might be ineffective; try using iter.",
             category=DeprecationWarning,
         )
 
-        offset = nd.random.randint(0, self.n_steps).asscalar()
+        offset = np.random.randint(0, self.n_steps).asscalar()
         n_idx = (
             (
-                (len(self.__vocab.corpus) - offset - 1)
+                (len(self._vocab.corpus) - offset - 1)
                 // self.batch_size
             )
             * self.batch_size
         )
 
-        inputs = nd.array(self.__vocab.corpus[offset:(offset+n_idx)])
+        inputs = np.array(self._vocab.corpus[offset:(offset+n_idx)])
         inputs = inputs.reshape((self.batch_size, -1))
-        outputs = nd.array(self.__vocab.corpus[(offset+1):(offset+1+n_idx)])
+        outputs = np.array(self._vocab.corpus[(offset+1):(offset+1+n_idx)])
         outputs = outputs.reshape((self.batch_size, -1))
 
         self.n_batches = inputs.shape[1] // self.n_steps
@@ -176,18 +216,18 @@ class SMILESDataLoader:
             Mini-batch containing inputs, outputs, and their corresponding
             valid lengths.
         """
-        for i_batch in range(0, len(self.vocab.corpus), self.batch_size):
+        for i_batch in range(0, len(self._vocab.corpus), self.batch_size):
             curr_slice = slice(i_batch, i_batch + self.batch_size)
-            batch = self._pad(self.vocab.corpus[curr_slice])
+            batch = self._pad(self._vocab.corpus[curr_slice])
 
             yield from self._iter_steps(batch)
 
-    def _iter_steps(self, batch: nd.NDArray) -> Iterator[Batch]:
+    def _iter_steps(self, batch: np.ndarray) -> Iterator[Batch]:
         """Generate batches separated by time steps.
 
         Parameters
         ----------
-        batch : nd.NDArray, shape = (self.batch_size, max_smiles_len)
+        batch : np.ndarray, shape = (self.batch_size, max_smiles_len)
             Batch.
 
         Yields
@@ -198,32 +238,45 @@ class SMILESDataLoader:
         """
 
         # TODO There is a solution not involving matrix lookup.
-        def get_valid_lengths(sample: nd.NDArray) -> nd.NDArray:
-            lengths = []
+        def get_valid_lengths(sample: np.ndarray) -> np.ndarray:
+            """For every entry in `sample`, return the lengths of subsequences
+            containing any valid SMILES tokens excluding padding token.
+
+            Parameters
+            ----------
+            sample : np.ndarray, shape = (self.batch_size - 1, max_len)
+                Input or output sample.
+
+            Returns
+            -------
+            valid_lengths : np.ndarray, shape = self.batch_size - 1
+                Valid lengths for every entry.
+            """
+            lengths: List[int] = []
 
             # FIXME Iterating over matrix is somewhat brute and ineffective.
             for seq in sample:
                 for i, s in enumerate(seq):
-                    if s.asscalar() == len(self.vocab):
+                    if s == len(self._vocab) - 1:
                         lengths.append(i)
                         break
                 else:
                     lengths.append(sample.shape[1])
 
-            return nd.array(lengths, dtype=int)
+            return np.array(lengths, dtype=int)
 
         inputs, outputs = batch[:, :-1], batch[:, 1:]
 
-        s = True
+        h = True
         for i_step in range(0, inputs.shape[1], self.n_steps):
-            step_slice = slice(i_step, i_step + self.n_steps)
-            x, y = inputs[:, step_slice], outputs[:, step_slice]
+            step_slice = (..., slice(i_step, i_step + self.n_steps))
+            x, y = inputs[step_slice], outputs[step_slice]
 
-            yield Batch(x, y, get_valid_lengths(x), get_valid_lengths(y), s)
+            yield Batch(x, y, get_valid_lengths(x), get_valid_lengths(y), h)
 
-            s = False
+            h = False
 
-    def _pad(self, item_lists: List[List[int]]) -> nd.NDArray:
+    def _pad(self, item_lists: List[List[int]]) -> np.ndarray:
         """Get a batch of SMILES token lists and fill with the `PAD` token ids
         those lists with lesser number of tokens.
 
@@ -235,7 +288,7 @@ class SMILESDataLoader:
 
         Returns
         -------
-        new_item_list : nd.NDArray, shape = (self.batch_size, max_len)
+        new_item_list : np.ndarray, shape = (self.batch_size, max_len)
             The array of token lists.
         """
         # Get the maximum string length among all entries in a batch.
@@ -247,8 +300,8 @@ class SMILESDataLoader:
         # (batch[:, :-1], batch[:, 1:]).
         max_len += 1
 
-        pad_token_idx = len(self.vocab)
-        new_items_list = []
+        pad_token_idx = len(self._vocab) - 1
+        new_items_list: List[List[int]] = []
 
         for item_list in item_lists:
             if len(item_list) != max_len:
@@ -258,5 +311,4 @@ class SMILESDataLoader:
             else:
                 new_items_list.append(item_list)
 
-        new_items_list = nd.array(new_items_list, dtype=int)
-        return new_items_list
+        return np.array(new_items_list, dtype=int)

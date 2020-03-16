@@ -11,11 +11,13 @@ __author__ = 'Sanjar Ad[iy]lov'
 import argparse
 from typing import Any, Dict, Union
 
-from mxnet import autograd, context, gluon, init, metric, nd, optimizer
+from mxnet import autograd, context, gluon, init, np, npx, optimizer
 
 from moleculegen import (
     SpecialTokens,
     get_mask_for_loss,
+    OneHotEncoder,
+    # Perplexity,
     SMILESDataset,
     SMILESDataLoader,
     SMILESRNNModel,
@@ -37,24 +39,24 @@ def main():
         -h, --help      show this help message and exit
         -b BATCH_SIZE, --batch_size BATCH_SIZE
                         The number of batches to generate at every iteration.
-                        (default: 32)
+                        (default: 128)
         -s N_STEPS, --n_steps N_STEPS
-                        The number of time steps. (default: 40)
+                        The number of time steps. (default: 20)
         -u HIDDEN_SIZE, --hidden_size HIDDEN_SIZE
                         The number of units in a network's hidden state.
-                        (default: 256)
+                        (default: 1024)
         -n N_LAYERS, --n_layers N_LAYERS
-                        The number of hidden layers. (default: 1)
+                        The number of hidden layers. (default: 3)
         -l LEARNING_RATE, --learning_rate LEARNING_RATE
-                        The learning rate. (default: 1.0)
+                        The learning rate. (default: 0.5)
         -e N_EPOCHS, --n_epochs N_EPOCHS
-                        The number of epochs. (default: 2000)
+                        The number of epochs. (default: 20)
         -p PREDICT_EPOCH, --predict_epoch PREDICT_EPOCH
-                        Predict new strings every p epochs (default: 20)
+                        Predict new strings every p epochs (default: 50)
         -v VERBOSE, --verbose VERBOSE
-                        Print logs every v iterations. (default: 10)
+                        Print logs every v iterations. (default: 50)
         -c {cpu,CPU,gpu,GPU}, --ctx {cpu,CPU,gpu,GPU}
-                        CPU or GPU (default: cpu)
+                        CPU or GPU (default: gpu)
         -r PREFIX, --prefix PREFIX
                         Initial symbol(s) of a SMILES string to generate.
                         (default: C)
@@ -68,6 +70,7 @@ def main():
         dataset=dataset,
     )
 
+    embedding_layer = OneHotEncoder(len(dataloader.vocab))
     rnn_layer = gluon.rnn.LSTM(
         hidden_size=options.hidden_size,
         num_layers=options.n_layers,
@@ -80,9 +83,9 @@ def main():
         gluon.nn.Dense(len(dataloader.vocab)),
     )
     model = SMILESRNNModel(
+        embedding_layer=embedding_layer,
         rnn_layer=rnn_layer,
         dense_layer=dense_layer,
-        vocab_size=len(dataloader.vocab),
     )
     optimizer_params = {
         'learning_rate': options.learning_rate,
@@ -148,11 +151,16 @@ def train(
     """
     model.initialize(ctx=ctx, force_reinit=True, init=init.Xavier())
     trainer = gluon.Trainer(model.collect_params(), opt, optimizer_params)
+    # padding_label = len(dataloader.vocab) - 1
 
     for epoch in range(1, n_epochs + 1):
 
+        if verbose != 0:
+            print(f'\nEpoch: {epoch:>3}\n')
+
         state = None
-        perplexity = metric.Perplexity(ignore_label=None)
+        # FIXME For some reason, metrics from mxnet.metric decelerate GPU work.
+        # perplexity = Perplexity(ignore_label=padding_label)
 
         for batch_no, batch in enumerate(dataloader, start=1):
             if batch.s:
@@ -169,16 +177,16 @@ def train(
                 p_outputs, state = model(inputs, state)
                 label_mask = get_mask_for_loss(inputs.shape, batch.v_y)
                 label_mask = label_mask.T.reshape((-1,)).as_in_context(ctx)
-                loss = loss_fn(p_outputs, outputs, label_mask).mean()
+                loss = loss_fn(p_outputs, outputs, label_mask)
 
             loss.backward()
-            trainer.step(batch_size=1)
-            perplexity.update(outputs, p_outputs.softmax())
+            trainer.step(batch_size=batch.x.shape[0])
+            # perplexity.update(outputs, npx.softmax(p_outputs))
 
             if batch_no % verbose == 0:
                 print(
-                    f'Loss: {loss.asscalar():>4.3f}, '
-                    f'Perplexity: {perplexity.get()[1]:>4.3f}'
+                    f'Loss: {loss.mean().item():>3.3f}'
+                    # f'Perplexity: {perplexity.get()[1]:>4.3f}'
                 )
 
             if batch_no % predict_epoch == 0:
@@ -187,9 +195,6 @@ def train(
                 generated_molecule = generated_molecule.strip(
                     SpecialTokens.EOS.value)
                 print(f'Molecule: {generated_molecule}')
-
-        if verbose != 0:
-            print(f'\nEpoch: {epoch:>4}\n')
 
 
 def predict(
@@ -220,16 +225,16 @@ def predict(
         Predicted (generated) SMILES string.
     """
 
-    def get_input() -> nd.NDArray:
+    def get_input() -> np.ndarray:
         """Get the last token from the output at current step.
 
         Returns
         -------
-        token_nd : mxnet.nd.NDArray
+        token_nd : mxnet.np.ndarray
             The last token at current step.
         """
         nonlocal outputs
-        return nd.array([outputs[-1]], ctx=ctx).reshape((1, 1))
+        return np.array([outputs[-1]], ctx=ctx).reshape((1, 1))
 
     state = model.begin_state(batch_size=1, ctx=ctx)
     outputs = vocab[prefix[:]]
@@ -241,7 +246,7 @@ def predict(
     for step in range(n_steps):
         output, state = model(get_input(), state)
 
-        output_id = int(output.argmax(axis=1).reshape(1).asscalar())
+        output_id = int(output.argmax(axis=1).reshape(1))
         char = vocab.idx_to_token[output_id]
         if char in (SpecialTokens.EOS.value, SpecialTokens.PAD.value):
             break
@@ -301,19 +306,19 @@ def process_options() -> argparse.Namespace:
         '-e', '--n_epochs',
         help='The number of epochs.',
         type=int,
-        default=10,
+        default=20,
     )
     parser.add_argument(
         '-p', '--predict_epoch',
         help='Predict new strings every p iterations.',
         type=int,
-        default=20,
+        default=50,
     )
     parser.add_argument(
         '-v', '--verbose',
         help='Print logs every v iterations.',
         type=int,
-        default=20,
+        default=50,
     )
     parser.add_argument(
         '-c', '--ctx',
@@ -330,4 +335,6 @@ def process_options() -> argparse.Namespace:
     return parser.parse_args()
 
 
-main()
+if __name__ == '__main__':
+    npx.set_np()
+    main()

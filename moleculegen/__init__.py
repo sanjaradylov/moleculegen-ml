@@ -13,9 +13,11 @@ from .data import (
     SMILESDataLoader,
 )
 from .model import (
+    OneHotEncoder,
     SMILESRNNModel,
 )
 from .utils import (
+    Perplexity,
     SpecialTokens,
     get_mask_for_loss,
 )
@@ -28,9 +30,13 @@ from .vocab import (
 
 __all__ = [
     'SpecialTokens',
-    'get_mask_for_loss',
+
     'count_tokens',
+    'get_mask_for_loss',
     'tokenize',
+
+    'OneHotEncoder',
+    'Perplexity',
     'SMILESDataLoader',
     'SMILESDataset',
     'SMILESRNNModel',

@@ -7,8 +7,34 @@ SMILESRNNModel
     Recurrent neural network to encode-decode SMILES strings.
 """
 
-from typing import Callable, List, Tuple, Union
-from mxnet import gluon, nd
+from typing import List, Tuple, Union
+from mxnet import gluon, np, npx
+
+
+class OneHotEncoder:
+    """One-hot encoder class. It is implemented as a functor for more
+    convenience, to pass it as a detached embedding layer.
+
+    Parameters
+    ----------
+    depth : int
+        The depth of one-hot encoding.
+    """
+
+    def __init__(self, depth: int):
+        self.depth = depth
+
+    def __call__(self, indices: np.ndarray, *args, **kwargs) -> np.ndarray:
+        """Return one-hot encoded tensor.
+
+        Parameters
+        ----------
+        indices : np.ndarray
+            The indices (categories) to encode.
+        *args, **kwargs
+            Additional arguments for `nd.one_hot`.
+        """
+        return npx.one_hot(indices, self.depth, *args, **kwargs)
 
 
 class SMILESRNNModel(gluon.Block):
@@ -17,18 +43,22 @@ class SMILESRNNModel(gluon.Block):
 
     Parameters
     ----------
+    embedding_layer : gluon.nn.Embedding or OneHotEncoder
+        Embedding layer.
     rnn_layer : gluon.rnn._RNNLayer
         Recurrent layer.
     dense_layer : gluon.nn.Dense or gluon.nn.Sequential
         Dense layer.
-    vocab_size : int
-        Number of unique tokens.
     kwargs
         Block parameters.
     """
 
     def __init__(
             self,
+            embedding_layer: Union[
+                gluon.nn.Embedding,
+                OneHotEncoder,
+            ],
             rnn_layer: Union[
                 gluon.rnn.GRU,
                 gluon.rnn.LSTM,
@@ -38,48 +68,46 @@ class SMILESRNNModel(gluon.Block):
                 gluon.nn.Dense,
                 gluon.nn.Sequential,
             ],
-            vocab_size: int,
             **kwargs,
     ):
         super().__init__(**kwargs)
 
+        self.embedding_layer = embedding_layer
         self.rnn_layer = rnn_layer
         self.dense_layer = dense_layer
-        self.vocab_size = vocab_size
 
     def begin_state(
             self,
             batch_size: int = 0,
-            func: Callable = nd.zeros,
             **kwargs,
-    ) -> List[nd.NDArray]:
+    ) -> List[np.ndarray]:
         """Return initial state for each element in mini-batch.
 
         Parameters
         ----------
         batch_size : int, default 0
             Batch size.
-        func : callable, default mxnet.nd.zeros
-            Function to create initial state.
+        **kwargs
+            Additional arguments for RNN layer's `begin_state` method including
+            callable `func` argument for creating initial state.
 
         Returns
         -------
         state : list
             Initial state.
         """
-        return self.rnn_layer.begin_state(
-            batch_size=batch_size, func=func, **kwargs)
+        return self.rnn_layer.begin_state(batch_size=batch_size, **kwargs)
 
     def forward(
             self,
-            inputs: nd.NDArray,
-            state: List[nd.NDArray],
-    ) -> Tuple[nd.NDArray, List[nd.NDArray]]:
+            inputs: np.ndarray,
+            state: List[np.ndarray],
+    ) -> Tuple[np.ndarray, List[np.ndarray]]:
         """Run forward computation.
 
         Parameters
         ----------
-        inputs : mxnet.nd.NDArray, shape = (batch_size, n_steps)
+        inputs : mxnet.np.ndarray, shape = (batch_size, n_steps)
             Input samples.
         state : list
             Hidden state.
@@ -87,12 +115,12 @@ class SMILESRNNModel(gluon.Block):
         Returns
         -------
         output : tuple
-            X : mxnet.nd.NDArray, shape = (n_steps, batch_size, vocab_size)
+            X : mxnet.np.ndarray, shape = (n_steps, batch_size, vocab_size)
                 Output at current step.
             H : list
                 Hidden state output.
         """
-        inputs_oh = nd.one_hot(inputs.T, self.vocab_size)
-        outputs, state = self.rnn_layer(inputs_oh, state)
+        inputs_e = self.embedding_layer(inputs.T)
+        outputs, state = self.rnn_layer(inputs_e, state)
         outputs = self.dense_layer(outputs.reshape((-1, outputs.shape[-1])))
         return outputs, state
