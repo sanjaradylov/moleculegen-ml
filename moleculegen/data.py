@@ -174,6 +174,11 @@ class SMILESDataLoader:
         sample : tuple
             inputs : mxnet.np.ndarray
             outputs : mxnet.np.ndarray
+
+        Warns
+        -----
+        DeprecationWarning
+            For now, this sampling method is considered to be ineffective.
         """
         warnings.warn(
             "This sampling method might be ineffective; try using iter.",

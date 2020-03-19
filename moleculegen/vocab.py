@@ -23,52 +23,8 @@ from typing import Counter, Dict, List, Optional, Sequence, Union
 
 from mxnet.gluon.data import SimpleDataset
 
+from .base import Corpus
 from .utils import SpecialTokens
-
-
-class Corpus:
-    """Descriptor that stores corpus of `Vocabulary` or similar instances.
-
-    Parameters
-    ----------
-    attribute_name : str
-        The attribute name of the processed instance.
-    """
-
-    __slots__ = (
-        'attribute_name',
-    )
-    __cache = dict()
-
-    def __init__(self, attribute_name: str):
-        self.attribute_name = attribute_name
-
-    def __get__(self, instance, owner=None) -> List[int]:
-        """Obtain a corpus from instance (e.g. Vocabulary and its tokens).
-
-        Returns
-        -------
-        corpus : list
-            Original data as list of token ids.
-        """
-        result = self.__cache.get(id(instance))
-        if result is not None:
-            return result
-
-        try:
-            return self.__cache.setdefault(
-                id(instance),
-                [
-                    instance[line]
-                    for line in getattr(instance, self.attribute_name)
-                ],
-            )
-        except AttributeError as err:
-            err.args = (
-                f"{self.attribute_name} of {instance!r} is empty; "
-                f"see documentation of {instance!r}.",
-            )
-            raise
 
 
 class Vocabulary:
@@ -165,13 +121,21 @@ class Vocabulary:
         -------
         idx : int or list of int
             Token index/indices.
+
+        Raises
+        ------
+        KeyError
+            When `tokens` are of unsupported type.
         """
-        if isinstance(tokens, Sequence):
+        if isinstance(tokens, str) and len(tokens) == 1:
+            return self._token_to_idx.get(tokens, SpecialTokens.UNK.value)
+        elif isinstance(tokens, Sequence):
             return [
                 self._token_to_idx.get(token, SpecialTokens.UNK.value)
                 for token in tokens
             ]
-        return self._token_to_idx.get(tokens, SpecialTokens.UNK.value)
+        else:
+            raise KeyError("`tokens` must be of type str of sequence of str.")
 
     @property
     def idx_to_token(self) -> List[str]:
@@ -200,6 +164,13 @@ class Vocabulary:
         Returns
         -------
         all_tokens : list
+
+        Warns
+        -----
+        UserWarning
+            If self._need_corpus was set to False, which means that the tokens
+            were not saved. Refer to your `SMILESDataset` instance to load the
+            original set of tokens.
         """
         if not self._need_corpus:
             warnings.warn(

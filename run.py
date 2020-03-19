@@ -124,7 +124,7 @@ def train(
         ctx: context.Context = context.cpu(0),
         prefix: str = 'C',
 ):
-    """Fit `model` with `data`.
+    """Fit `model` with data from `dataloader`.
 
     Parameters
     ----------
@@ -237,11 +237,7 @@ def predict(
         return np.array([outputs[-1]], ctx=ctx).reshape((1, 1))
 
     state = model.begin_state(batch_size=1, ctx=ctx)
-    outputs = vocab[prefix[:]]
-
-    for token in prefix[1:]:
-        output, state = model(get_input(), state)
-        outputs.append(vocab[token])
+    outputs = vocab[list(prefix)]
 
     for step in range(n_steps):
         output, state = model(get_input(), state)
