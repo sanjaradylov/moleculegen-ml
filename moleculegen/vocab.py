@@ -56,6 +56,8 @@ class Vocabulary:
     all_tokens : list
         List of all tokens from original data set.
         Accessible only if corpus is needed.
+    token_freqs : dict
+        The token-to-count mapping.
     corpus : list
         Original data set corpus. Accessible only if corpus is needed.
     """
@@ -76,28 +78,30 @@ class Vocabulary:
 
         self._need_corpus = need_corpus
         if self._need_corpus:
-            self._all_tokens = (
+            self._all_tokens: List[List[str]] = (
                 tokens or tokenize([sample for sample in dataset]))
         else:
             self._all_tokens = None
 
-        tokens = (
+        tokens: List[List[str]] = (
             tokens
             or self._all_tokens
             or tokenize([sample for sample in dataset])
         )
-        counter = counter or count_tokens(tokens)
+        counter: Counter[str] = counter or count_tokens(tokens)
 
-        self.token_freqs = dict(sorted(
+        self._token_freqs: Dict[str, int] = dict(sorted(
             counter.items(), key=lambda c: c[1], reverse=True))
 
-        self._idx_to_token: List[str] = []
-        self._token_to_idx: Dict[str, int] = {}
-        for token in counter.keys():
+        self._idx_to_token: List[str] = [
+            token.value for token in SpecialTokens.__members__.values()
+        ]
+        self._token_to_idx: Dict[str, int] = {
+            token: id_ for id_, token in enumerate(self._idx_to_token)
+        }
+        for token in set(counter.keys()) - set(self._idx_to_token):
             self._idx_to_token.append(token)
             self._token_to_idx[token] = len(self._token_to_idx)
-        self._idx_to_token.append(SpecialTokens.PAD.value)
-        self._token_to_idx[SpecialTokens.PAD.value] = len(self._token_to_idx)
 
     def __len__(self) -> int:
         """Return the number of unique tokens (SMILES characters).
@@ -177,6 +181,16 @@ class Vocabulary:
                 "Tokens were not obtained from dataset; set need_corpus=True."
             )
         return self._all_tokens
+
+    @property
+    def token_freqs(self) -> Dict[str, int]:
+        """The token-to-count mapping.
+
+        Returns
+        -------
+        token_freqs : dict
+        """
+        return self._token_freqs
 
     def get_tokens(self, indices: List[int]) -> List[str]:
         """Return the tokens corresponding to the indices.

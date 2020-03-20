@@ -20,14 +20,20 @@ class VocabTestCase(unittest.TestCase):
         self.vocab = Vocabulary(self.dataset, need_corpus=True)
 
     def test_tokens_and_idx(self):
+        special_tokens = set(
+            token.value for token in SpecialTokens.__members__.values()
+        )
+
         self.assertSequenceEqual(
-            sorted(set(self.temp_file.smiles_strings)),
-            sorted(set(self.vocab.token_to_idx)
-                   - {SpecialTokens.UNK.value, SpecialTokens.PAD.value}),
+            sorted(set(self.temp_file.smiles_strings.replace('\n', ''))),
+            sorted(set(self.vocab.token_to_idx) - special_tokens),
         )
         self.assertSequenceEqual(
-            sorted(set(self.vocab.token_to_idx)
-                   - {SpecialTokens.UNK.value, SpecialTokens.PAD.value}),
+            sorted(
+                set(self.vocab.token_to_idx)
+                # Pad and unknown tokens does not appear in the original set.
+                - {SpecialTokens.PAD.value, SpecialTokens.UNK.value}
+            ),
             sorted(set(self.vocab.token_freqs)),
         )
 
@@ -38,13 +44,19 @@ class VocabTestCase(unittest.TestCase):
         )
 
     def test_corpus(self):
+        # Original SMILES list without padded special tokens.
         smiles_list = self.temp_file.smiles_strings.split('\n')
 
         self.assertEqual(len(self.vocab.corpus), len(smiles_list))
 
         for idx, tokens in zip(self.vocab.corpus, smiles_list):
-            tokens += SpecialTokens.EOS.value
+            # Add special tokens in order to correspond to the loaded corpus
+            # for data sampling and model fitting.
+            tokens = SpecialTokens.add_tokens_to(tokens)
+            # Test id-to-token mapping.
             self.assertListEqual(self.vocab.get_tokens(idx), list(tokens))
+            # Test token-to-id mapping.
+            self.assertListEqual(idx, self.vocab[tokens])
 
     def tearDown(self):
         self.fh.close()

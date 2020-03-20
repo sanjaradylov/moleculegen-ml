@@ -4,7 +4,11 @@ Test `SMILESDataset` and `SMILESDataLoader` classes and their components.
 
 import unittest
 
-from moleculegen import SMILESDataset, SMILESDataLoader
+from moleculegen import (
+    SpecialTokens,
+    SMILESDataset,
+    SMILESDataLoader,
+)
 from moleculegen.tests.utils import TempSMILESFile
 
 
@@ -13,11 +17,17 @@ class DataTestCase(unittest.TestCase):
         self.temp_file = TempSMILESFile(tempfile_kwargs={'prefix': 'dataset'})
         self.fh = self.temp_file.open()
 
+        self.item_list = self.temp_file.smiles_strings.split('\n')
+
     def test_read(self):
         dataset = SMILESDataset(self.fh.name)
+        self.assertListEqual(
+            self.item_list,
+            [SpecialTokens.remove_tokens_from(sample) for sample in dataset],
+        )
+
         self.assertEqual(
-            len(self.temp_file.smiles_strings.split('\n')),
-            len([sample for sample in dataset]),
+            len(self.item_list),
             len(dataset),
         )
 

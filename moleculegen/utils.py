@@ -17,6 +17,39 @@ class SpecialTokens(enum.Enum):
     UNK = '_'  # unknown token
     PAD = '*'  # padding
 
+    @classmethod
+    def add_tokens_to(cls, smiles: str) -> str:
+        """Prepend Beginnig-of-SMILES token and append End-of-SMILES token
+        to the specified SMILES string `smiles`.
+
+        Parameters
+        ----------
+        smiles : str
+            Original SMILES string.
+
+        Returns
+        -------
+        modified_smiles : str
+            Modified SMILES string.
+        """
+        return f"{cls.BOS.value}{smiles}{cls.EOS.value}"
+
+    @classmethod
+    def remove_tokens_from(cls, smiles: str) -> str:
+        """Remove special tokens from `smiles`.
+
+        Parameters
+        ----------
+        smiles : str
+            Original SMILES string.
+
+        Returns
+        -------
+        modified_smiles : str
+            Modified SMILES string.
+        """
+        return smiles.lstrip(cls.BOS.value).rstrip(cls.EOS.value)
+
 
 class Batch(NamedTuple):
     x: np.ndarray

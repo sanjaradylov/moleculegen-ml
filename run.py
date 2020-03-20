@@ -11,7 +11,7 @@ __author__ = 'Sanjar Ad[iy]lov'
 import argparse
 from typing import Any, Dict, Union
 
-from mxnet import autograd, context, gluon, init, np, npx, optimizer
+from mxnet import autograd, context, gluon, init, npx, optimizer
 
 from moleculegen import (
     SpecialTokens,
@@ -21,7 +21,6 @@ from moleculegen import (
     SMILESDataset,
     SMILESDataLoader,
     SMILESRNNModel,
-    Vocabulary,
 )
 
 
@@ -59,7 +58,7 @@ def main():
                         CPU or GPU (default: gpu)
         -r PREFIX, --prefix PREFIX
                         Initial symbol(s) of a SMILES string to generate.
-                        (default: C)
+                        (default: ^)
     """
     options = process_options()
 
@@ -122,7 +121,7 @@ def train(
         ),
         verbose: int = 0,
         ctx: context.Context = context.cpu(0),
-        prefix: str = 'C',
+        prefix: str = SpecialTokens.BOS.value,
 ):
     """Fit `model` with data from `dataloader`.
 
@@ -190,66 +189,8 @@ def train(
                 )
 
             if batch_no % predict_epoch == 0:
-                generated_molecule = predict(
-                    prefix, model, dataloader.vocab, 50, ctx)
-                generated_molecule = generated_molecule.strip(
-                    SpecialTokens.EOS.value)
-                print(f'Molecule: {generated_molecule}')
-
-
-def predict(
-        prefix: str,
-        model: SMILESRNNModel,
-        vocab: Vocabulary,
-        n_steps: int,
-        ctx: context.Context = context.cpu(0),
-) -> str:
-    """Predict SMILES string starting with `prefix`.
-
-    Parameters
-    ----------
-    prefix : str
-        The initial tokens of the string being generated.
-    model : SMILESRNNModel
-        RNN.
-    vocab : Vocabulary
-        Vocabulary.
-    n_steps : int
-        The number of time steps.
-    ctx : mxnet.context.Context
-        CPU or GPU.
-
-    Returns
-    -------
-    s : str
-        Predicted (generated) SMILES string.
-    """
-
-    def get_input() -> np.ndarray:
-        """Get the last token from the output at current step.
-
-        Returns
-        -------
-        token_nd : mxnet.np.ndarray
-            The last token at current step.
-        """
-        nonlocal outputs
-        return np.array([outputs[-1]], ctx=ctx).reshape((1, 1))
-
-    state = model.begin_state(batch_size=1, ctx=ctx)
-    outputs = vocab[list(prefix)]
-
-    for step in range(n_steps):
-        output, state = model(get_input(), state)
-
-        output_id = int(output.argmax(axis=1).reshape(1))
-        char = vocab.idx_to_token[output_id]
-        if char in (SpecialTokens.EOS.value, SpecialTokens.PAD.value):
-            break
-
-        outputs.append(output_id)
-
-    return ''.join(vocab.idx_to_token[i] for i in outputs)
+                smiles = model.generate(dataloader.vocab, prefix, ctx=ctx)
+                print(f'Molecule: {smiles}')
 
 
 def process_options() -> argparse.Namespace:
@@ -325,7 +266,7 @@ def process_options() -> argparse.Namespace:
     parser.add_argument(
         '-r', '--prefix',
         help='Initial symbol(s) of a SMILES string to generate.',
-        default='C',
+        default=SpecialTokens.BOS.value,
     )
 
     return parser.parse_args()
