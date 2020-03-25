@@ -157,23 +157,21 @@ def train(
         if verbose != 0:
             print(f'\nEpoch: {epoch:>3}\n')
 
-        state = None
+        states = None
         # FIXME For some reason, metrics from mxnet.metric decelerate GPU work.
         # perplexity = Perplexity(ignore_label=padding_label)
 
         for batch_no, batch in enumerate(dataloader, start=1):
             if batch.s:
-                state = model.begin_state(
-                    batch_size=batch.x.shape[0], ctx=ctx)
+                states = model.begin_state(batch_size=batch.x.shape[0], ctx=ctx)
             else:
-                for unit in state:
-                    unit.detach()
+                states = [state.detach() for state in states]
 
             inputs = batch.x.as_in_context(ctx)
             outputs = batch.y.T.reshape((-1,)).as_in_context(ctx)
 
             with autograd.record():
-                p_outputs, state = model(inputs, state)
+                p_outputs, states = model(inputs, states)
                 label_mask = get_mask_for_loss(inputs.shape, batch.v_y)
                 label_mask = label_mask.T.reshape((-1,)).as_in_context(ctx)
                 loss = loss_fn(p_outputs, outputs, label_mask)
