@@ -11,7 +11,7 @@ __author__ = 'Sanjar Ad[iy]lov'
 import argparse
 from typing import Any, Dict, Union
 
-from mxnet import autograd, context, gluon, init, npx, optimizer
+from mxnet import autograd, context, gluon, init, npx, optimizer, random
 
 from moleculegen import (
     SpecialTokens,
@@ -89,7 +89,7 @@ def main():
     optimizer_params = {
         'learning_rate': options.learning_rate,
         'clip_gradient': 5,
-        'wd': 1,
+        # 'wd': 1,
     }
     ctx = {
         'cpu': context.cpu(0),
@@ -148,7 +148,7 @@ def train(
     prefix : str, default 'C'
         The initial tokens of the string being generated.
     """
-    model.initialize(ctx=ctx, force_reinit=True, init=init.Xavier())
+    model.initialize(ctx=ctx, force_reinit=True, init=init.Normal(sigma=0.1))
     trainer = gluon.Trainer(model.collect_params(), opt, optimizer_params)
     # padding_label = len(dataloader.vocab) - 1
 
@@ -217,7 +217,7 @@ def process_options() -> argparse.Namespace:
         '-s', '--n_steps',
         help='The number of time steps.',
         type=int,
-        default=20,
+        default=50,
     )
     parser.add_argument(
         '-u', '--hidden_size',
@@ -229,13 +229,13 @@ def process_options() -> argparse.Namespace:
         '-n', '--n_layers',
         help='The number of hidden layers.',
         type=int,
-        default=3,
+        default=2,
     )
     parser.add_argument(
         '-l', '--learning_rate',
         help='The learning rate.',
         type=float,
-        default=.5,
+        default=0.0001,
     )
     parser.add_argument(
         '-e', '--n_epochs',
@@ -272,4 +272,5 @@ def process_options() -> argparse.Namespace:
 
 if __name__ == '__main__':
     npx.set_np()
+    random.seed(0)
     main()
