@@ -17,7 +17,6 @@ from moleculegen import (
     SpecialTokens,
     get_mask_for_loss,
     OneHotEncoder,
-    # Perplexity,
     SMILESDataset,
     SMILESDataLoader,
     SMILESRNNModel,
@@ -59,6 +58,11 @@ def main():
         -r PREFIX, --prefix PREFIX
                         Initial symbol(s) of a SMILES string to generate.
                         (default: ^)
+        -m MAX_GEN_LENGTH, --max_gen_length MAX_GEN_LENGTH
+                        Maximum number of tokens to generate. (default: 100)
+        -g GRAD_CLIP_LENGTH, --grad_clip_length GRAD_CLIP_LENGTH
+                        The radius by which a gradient's length is
+                        constrained. (default: 5.0)
     """
     options = process_options()
 
@@ -77,8 +81,6 @@ def main():
     )
     dense_layer = gluon.nn.Sequential()
     dense_layer.add(
-        # gluon.nn.Dense(256, activation='relu'),
-        # gluon.nn.Dropout(0.2),
         gluon.nn.Dense(len(dataloader.vocab)),
     )
     model = SMILESRNNModel(
@@ -88,8 +90,7 @@ def main():
     )
     optimizer_params = {
         'learning_rate': options.learning_rate,
-        'clip_gradient': 5,
-        # 'wd': 1,
+        'clip_gradient': options.grad_clip_length,
     }
     ctx = {
         'cpu': context.cpu(0),
@@ -105,6 +106,7 @@ def main():
         verbose=options.verbose,
         ctx=ctx[options.ctx.lower()],
         prefix=options.prefix,
+        max_gen_length=options.max_gen_length,
     )
 
 
@@ -122,6 +124,7 @@ def train(
         verbose: int = 0,
         ctx: context.Context = context.cpu(0),
         prefix: str = SpecialTokens.BOS.value,
+        max_gen_length: int = 100,
 ):
     """Fit `model` with data from `dataloader`.
 
@@ -147,10 +150,11 @@ def train(
         Print logs every `verbose` steps.
     prefix : str, default 'C'
         The initial tokens of the string being generated.
+    max_gen_length : int, default 100
+        Maximum number of tokens to generate.
     """
     model.initialize(ctx=ctx, force_reinit=True, init=init.Normal(sigma=0.1))
     trainer = gluon.Trainer(model.collect_params(), opt, optimizer_params)
-    # padding_label = len(dataloader.vocab) - 1
 
     for epoch in range(1, n_epochs + 1):
 
@@ -158,8 +162,6 @@ def train(
             print(f'\nEpoch: {epoch:>3}\n')
 
         states = None
-        # FIXME For some reason, metrics from mxnet.metric decelerate GPU work.
-        # perplexity = Perplexity(ignore_label=padding_label)
 
         for batch_no, batch in enumerate(dataloader, start=1):
             if batch.s:
@@ -178,17 +180,20 @@ def train(
 
             loss.backward()
             trainer.step(batch_size=batch.x.shape[0])
-            # perplexity.update(outputs, npx.softmax(p_outputs))
 
-            if batch_no % verbose == 0:
+            if (batch_no - 1) % verbose == 0:
                 print(
                     f'Loss: {loss.mean().item():>3.3f}'
-                    # f'Perplexity: {perplexity.get()[1]:>4.3f}'
                 )
 
-            if batch_no % predict_epoch == 0:
-                smiles = model.generate(dataloader.vocab, prefix, ctx=ctx)
-                print(f'Molecule: {smiles}')
+            if (batch_no - 1) % predict_epoch == 0:
+                smiles = model.generate(
+                    dataloader.vocab,
+                    prefix=prefix,
+                    max_length=max_gen_length,
+                    ctx=ctx,
+                )
+                print(f'Molecule:\n    {smiles}')
 
 
 def process_options() -> argparse.Namespace:
@@ -265,6 +270,18 @@ def process_options() -> argparse.Namespace:
         '-r', '--prefix',
         help='Initial symbol(s) of a SMILES string to generate.',
         default=SpecialTokens.BOS.value,
+    )
+    parser.add_argument(
+        '-m', '--max_gen_length',
+        help='Maximum number of tokens to generate.',
+        type=int,
+        default=100,
+    )
+    parser.add_argument(
+        '-g', '--grad_clip_length',
+        help="The radius by which a gradient's length is constrained.",
+        type=float,
+        default=5.0,
     )
 
     return parser.parse_args()
