@@ -9,6 +9,9 @@ __author__ = 'Sanjar Ad[iy]lov'
 
 
 import argparse
+import datetime
+import statistics
+import time
 from typing import Any, Dict, Union
 
 from mxnet import autograd, context, gluon, init, npx, optimizer, random
@@ -155,17 +158,23 @@ def train(
     """
     model.initialize(ctx=ctx, force_reinit=True, init=init.Normal(sigma=0.1))
     trainer = gluon.Trainer(model.collect_params(), opt, optimizer_params)
+    time_list = []
 
     for epoch in range(1, n_epochs + 1):
 
-        if verbose != 0:
+        start_time = None
+        if verbose > 0:
             print(f'\nEpoch: {epoch:>3}\n')
+            start_time = time.time()
 
         states = None
+        loss_list = []
 
         for batch_no, batch in enumerate(dataloader, start=1):
+            curr_batch_size = batch.x.shape[0]
+
             if batch.s:
-                states = model.begin_state(batch_size=batch.x.shape[0], ctx=ctx)
+                states = model.begin_state(batch_size=curr_batch_size, ctx=ctx)
             else:
                 states = [state.detach() for state in states]
 
@@ -179,11 +188,14 @@ def train(
                 loss = loss_fn(p_outputs, outputs, label_mask)
 
             loss.backward()
-            trainer.step(batch_size=batch.x.shape[0])
+            trainer.step(batch_size=curr_batch_size)
 
             if (batch_no - 1) % verbose == 0:
+                mean_loss = loss.mean().item()
+                loss_list.append(mean_loss)
                 print(
-                    f'Loss: {loss.mean().item():>3.3f}'
+                    f'Batch: {batch_no:>6}, '
+                    f'Loss: {mean_loss:>3.3f}'
                 )
 
             if (batch_no - 1) % predict_epoch == 0:
@@ -194,6 +206,22 @@ def train(
                     ctx=ctx,
                 )
                 print(f'Molecule:\n    {smiles}')
+
+        if verbose > 0:
+            print(
+                f'\nMean loss: '
+                f'{statistics.mean(loss_list):.3f} '
+                f'(+/- {statistics.stdev(loss_list):.3f})'
+            )
+
+            seconds_left = time.time() - start_time
+            time_list.append(seconds_left)
+            exec_time = datetime.timedelta(seconds=seconds_left)
+            print(f'Execution time: {exec_time}')
+
+    if verbose > 0:
+        total_time = datetime.timedelta(seconds=sum(time_list))
+        print(f'\nTotal execution time: {total_time}.')
 
 
 def process_options() -> argparse.Namespace:
