@@ -27,14 +27,14 @@ WHERE
               pref_name NOT LIKE 'Plasmodium falciparum%'
           AND pref_name NOT LIKE 'Staphylococcus aureus%'
           AND pref_name NOT IN (
-		    'Serotonin 2a (5-HT2a) receptor',
-			'5-hydroxytryptamine receptor 2A',
-			'Serotonin receptor 2a and 2c (5HT2A and 5HT2C)',
-			'Serotonin receptor 2a and 2b (5HT2A and 5HT2B)',
-			'Serotonin 2 receptors; 5-HT2a & 5-HT2c',
-			'Dopamine D2 receptor and Serotonin 2a receptor (D2 and 5HT2a)'
-		  )
-      )
+            'Serotonin 2a (5-HT2a) receptor',
+            '5-hydroxytryptamine receptor 2A',
+            'Serotonin receptor 2a and 2c (5HT2A and 5HT2C)',
+            'Serotonin receptor 2a and 2b (5HT2A and 5HT2B)',
+            'Serotonin 2 receptors; 5-HT2a & 5-HT2c',
+            'Dopamine D2 receptor and Serotonin 2a receptor (D2 and 5HT2a)'
+          )
+    )
 
   )
 

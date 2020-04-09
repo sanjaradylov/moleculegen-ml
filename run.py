@@ -32,40 +32,47 @@ def main():
 
     Command line options:
 
-    positional arguments:
+    input/output arguments:
         filename        The path to the training data containing SMILES
                         strings.
 
-    optional arguments:
-        -h, --help      show this help message and exit
-        -b BATCH_SIZE, --batch_size BATCH_SIZE
-                        The number of batches to generate at every iteration.
-                        (default: 128)
-        -s N_STEPS, --n_steps N_STEPS
-                        The number of time steps. (default: 20)
+    model arguments:
         -u HIDDEN_SIZE, --hidden_size HIDDEN_SIZE
                         The number of units in a network's hidden state.
                         (default: 1024)
         -n N_LAYERS, --n_layers N_LAYERS
-                        The number of hidden layers. (default: 3)
+                        The number of hidden layers. (default: 2)
+
+    hyperparameters:
+        -b BATCH_SIZE, --batch_size BATCH_SIZE
+                        The number of batches to generate at every iteration.
+                        (default: 128)
+        -s N_STEPS, --n_steps N_STEPS
+                        The number of time steps. (default: 50)
         -l LEARNING_RATE, --learning_rate LEARNING_RATE
-                        The learning rate. (default: 0.5)
+                        The learning rate. (default: 0.0001)
         -e N_EPOCHS, --n_epochs N_EPOCHS
                         The number of epochs. (default: 20)
-        -p PREDICT_EPOCH, --predict_epoch PREDICT_EPOCH
-                        Predict new strings every p epochs (default: 50)
+        -g GRAD_CLIP_LENGTH, --grad_clip_length GRAD_CLIP_LENGTH
+                        The radius by which a gradient's length is
+                        constrained. (default: 5.0)
+
+    logging options:
         -v VERBOSE, --verbose VERBOSE
                         Print logs every v iterations. (default: 50)
-        -c {cpu,CPU,gpu,GPU}, --ctx {cpu,CPU,gpu,GPU}
-                        CPU or GPU (default: gpu)
         -r PREFIX, --prefix PREFIX
                         Initial symbol(s) of a SMILES string to generate.
                         (default: ^)
         -m MAX_GEN_LENGTH, --max_gen_length MAX_GEN_LENGTH
                         Maximum number of tokens to generate. (default: 100)
-        -g GRAD_CLIP_LENGTH, --grad_clip_length GRAD_CLIP_LENGTH
-                        The radius by which a gradient's length is
-                        constrained. (default: 5.0)
+        -p PREDICT_EPOCH, --predict_epoch PREDICT_EPOCH
+                        Predict new strings every p iterations. (default: 50)
+
+    other options:
+        -c {cpu,CPU,gpu,GPU}, --ctx {cpu,CPU,gpu,GPU}
+                        CPU or GPU. (default: gpu)
+        --help          Show this help message and exit.
+        --version       Show version information.
     """
     options = process_options()
 
@@ -82,10 +89,7 @@ def main():
         num_layers=options.n_layers,
         dropout=0.2,
     )
-    dense_layer = gluon.nn.Sequential()
-    dense_layer.add(
-        gluon.nn.Dense(len(dataloader.vocab)),
-    )
+    dense_layer = gluon.nn.Dense(len(dataloader.vocab))
     model = SMILESRNNModel(
         embedding_layer=embedding_layer,
         rnn_layer=rnn_layer,
@@ -233,83 +237,109 @@ def process_options() -> argparse.Namespace:
         Command line attributes and its values.
     """
     parser = argparse.ArgumentParser(
-        description='Generate novel molecules with recurrent neural networks.',
+        description=(
+            'Generate novel molecules with recurrent neural networks. '
+            'The script has inclusive argument groups representing options '
+            'for model fitting, molecule prediction, and logging.'
+        ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        add_help=False,
     )
-    parser.add_argument(
+
+    file_options = parser.add_argument_group('input/output arguments')
+    file_options.add_argument(
         'filename',
         help='The path to the training data containing SMILES strings.',
     )
-    parser.add_argument(
-        '-b', '--batch_size',
-        help='The number of batches to generate at every iteration.',
-        type=int,
-        default=128,
-    )
-    parser.add_argument(
-        '-s', '--n_steps',
-        help='The number of time steps.',
-        type=int,
-        default=50,
-    )
-    parser.add_argument(
+
+    model_options = parser.add_argument_group('model arguments')
+    model_options.add_argument(
         '-u', '--hidden_size',
         help="The number of units in a network's hidden state.",
         type=int,
         default=1024,
     )
-    parser.add_argument(
+    model_options.add_argument(
         '-n', '--n_layers',
         help='The number of hidden layers.',
         type=int,
         default=2,
     )
-    parser.add_argument(
+
+    fit_options = parser.add_argument_group('hyperparameters')
+    fit_options.add_argument(
+        '-b', '--batch_size',
+        help='The number of batches to generate at every iteration.',
+        type=int,
+        default=128,
+    )
+    fit_options.add_argument(
+        '-s', '--n_steps',
+        help='The number of time steps.',
+        type=int,
+        default=50,
+    )
+    fit_options.add_argument(
         '-l', '--learning_rate',
         help='The learning rate.',
         type=float,
         default=0.0001,
     )
-    parser.add_argument(
+    fit_options.add_argument(
         '-e', '--n_epochs',
         help='The number of epochs.',
         type=int,
         default=20,
     )
-    parser.add_argument(
-        '-p', '--predict_epoch',
-        help='Predict new strings every p iterations.',
-        type=int,
-        default=50,
+    fit_options.add_argument(
+        '-g', '--grad_clip_length',
+        help="The radius by which a gradient's length is constrained.",
+        type=float,
+        default=5.0,
     )
-    parser.add_argument(
+
+    log_options = parser.add_argument_group('logging options')
+    log_options.add_argument(
         '-v', '--verbose',
         help='Print logs every v iterations.',
         type=int,
         default=50,
     )
-    parser.add_argument(
-        '-c', '--ctx',
-        help='CPU or GPU.',
-        default='gpu',
-        choices=('cpu', 'CPU', 'gpu', 'GPU'),
-    )
-    parser.add_argument(
+    log_options.add_argument(
         '-r', '--prefix',
         help='Initial symbol(s) of a SMILES string to generate.',
         default=SpecialTokens.BOS.value,
     )
-    parser.add_argument(
+    log_options.add_argument(
         '-m', '--max_gen_length',
         help='Maximum number of tokens to generate.',
         type=int,
         default=100,
     )
-    parser.add_argument(
-        '-g', '--grad_clip_length',
-        help="The radius by which a gradient's length is constrained.",
-        type=float,
-        default=5.0,
+    log_options.add_argument(
+        '-p', '--predict_epoch',
+        help='Predict new strings every p iterations.',
+        type=int,
+        default=50,
+    )
+
+    other_options = parser.add_argument_group('other options')
+    other_options.add_argument(
+        '-c', '--ctx',
+        help='CPU or GPU.',
+        default='gpu',
+        choices=('cpu', 'CPU', 'gpu', 'GPU'),
+    )
+    other_options.add_argument(
+        '--help',
+        help='Show this help message and exit.',
+        action='help',
+    )
+    other_options.add_argument(
+        '--version',
+        help='Show version information.',
+        action='version',
+        version='%(prog)s beta',
     )
 
     return parser.parse_args()

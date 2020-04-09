@@ -10,12 +10,12 @@ FROM compound_structures
     ON compound_structures.molregno = activities.molregno
 WHERE
   activities.assay_id IN (
-    
+
     SELECT assay_id
     FROM assays
     WHERE
       tid IN (
-        
+
         SELECT tid
         FROM target_dictionary
         WHERE

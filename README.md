@@ -22,6 +22,7 @@ Download, install, and set up [Miniconda](https://conda.io/en/latest/miniconda.h
 Create a new environment:
 ```bash
 $ conda create -n moleculegen python=3.7
+$ conda activate moleculegen
 ```
 
 Install dependencies:
