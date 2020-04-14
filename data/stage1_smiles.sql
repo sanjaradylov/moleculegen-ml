@@ -40,4 +40,4 @@ WITH target_ids AS (
 
 SELECT DISTINCT canonical_smiles
 FROM compound_structures
-WHERE molregno in molregnos;
+WHERE molregno IN molregnos;
