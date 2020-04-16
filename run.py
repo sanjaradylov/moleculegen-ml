@@ -15,7 +15,7 @@ import statistics
 import time
 from typing import Any, Dict, IO, Optional, Union
 
-from mxnet import autograd, context, gluon, init, npx, optimizer, random
+from mxnet import autograd, context, gluon, init, npx, optimizer
 
 from moleculegen import (
     SpecialTokens,
@@ -317,8 +317,8 @@ def train(
     if n_predictions > 0:
         if verbose > 0:
             print(
-                f'\nGenerating novel molecules and saving results in '
-                f'{predictions_out!r}.'
+                f"\nGenerating novel molecules and saving results in "
+                f"'{predictions_out}'."
             )
 
         with open(predictions_out, 'w') as fh:
@@ -525,5 +525,4 @@ def process_options() -> argparse.Namespace:
 
 if __name__ == '__main__':
     npx.set_np()
-    random.seed(0)
     main()
