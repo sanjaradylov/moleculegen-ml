@@ -10,107 +10,253 @@ Corpus
 """
 
 import enum
-from typing import Any, Callable, List, Optional, Tuple, Type
+from typing import Any, FrozenSet, List, Optional, Type
 
 
-# (For `Token` class) Atomic symbols.
-_ATOMIC_SYMBOLS = [
-    'Ac', 'Ag', 'Al', 'Am', 'Ar', 'As', 'At', 'Au', 'B', 'Ba', 'Be', 'Bh',
-    'Bi', 'Bk', 'Br', 'C', 'Ca', 'Cd', 'Ce', 'Cf', 'Cl', 'Cm', 'Co', 'Cr',
-    'Cs', 'Cu', 'Db', 'Dy', 'Er', 'Es', 'Eu', 'F', 'Fe', 'Fm', 'Fr', 'Ga',
-    'Gd', 'Ge', 'H', 'He', 'Hf', 'Hg', 'Ho', 'Hs', 'I', 'In', 'Ir', 'K',
-    'Kr', 'La', 'Li', 'Lr', 'Lu', 'Md', 'Mg', 'Mn', 'Mo', 'Mt', 'N', 'Na',
-    'Nb', 'Nd', 'Ne', 'Ni', 'No', 'Np', 'O', 'Os', 'P', 'Pa', 'Pb', 'Pd',
-    'Pm', 'Po', 'Pr', 'Pt', 'Pu', 'Ra', 'Rb', 'Re', 'Rf', 'Rh', 'Rn', 'Ru',
-    'S', 'Sb', 'Sc', 'Se', 'Sg', 'Si', 'Sm', 'Sn', 'Sr', 'Ta', 'Tb', 'Tc',
-    'Te', 'Th', 'Ti', 'Tl', 'Tm', 'U', 'V', 'W', 'Xe', 'Y', 'Yb', 'Zn', 'Zr'
-]
-# (For `Token` class) Bonds, branches, ring closures, disconnections, others.
-_BBRDO = {
-    'BOND_SINGLE': '-',
-    'BOND_DOUBLE': '=',
-    'BOND_TRIPLE': '#',
-    'BOND_AROMATIC': ':',
-
-    'BRANCH_LEFT': '(',
-    'BRANCH_RIGHT': ')',
-
-    'HIGHER_RING_CLOSURE': '%',
-
-    'PERIOD': '.',
-
-    'BRACKET_LEFT': '[',
-    'BRACKET_RIGHT': ']',
-
-    'CHIRAL_SPEC': '@',
-
-    'CHARGE_POSITIVE': '+',
-    'CHARGE_NEGATIVE': '-',
-
-    'nH': '[nH]',
-}
-_BBRDO.update({
-    key: value for key, value in zip(
-        ['ONE', 'TWO', 'THREE', 'FOUR',
-         'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE'],
-        range(1, 10),
-    )
-})
-# (For `Token` class) Special tokens.
-_SPECIAL = {
-    'BOS': '{',  # Beginning of SMILES.
-    'EOS': '}',  # End of SMILES.
-    'PAD': '_',  # Padding token.
-    'UNK': '*',  # Unknown token.
-}
-
-
-# (For `Token` class).
-def __init_token_instance_attrs(
-        self: 'Token',
-        token: str,
-        rule_class: str,
-):
-    """This function will be used to initialize (__init__) Token enumeration.
+class Token(enum.Enum):
+    """Token enumeration class containing possible tokens from SMILES
+    Vocabulary. Every token entry is an attribute, which can be attained by
+    calling `Token.TOKEN_NAME`. The values of tokens come in form
+    (value, rule_class), in which value is SMILES token and rule class is one
+    of {'atom', 'other', 'special'}. In case of atoms, the names of tokens are
+    identical to the values (atomic symbols), i.e.
+    `Token.TOKEN_NAME.name == Token.TOKEN_NAME.value[0]`. Otherwise, the names
+    are self-explanatory, i.e. `'=' == TOKEN.BOND_DOUBLE.value[0]`.
     """
-    setattr(self, 'token', token)
-    setattr(self, 'rule_class', rule_class)
 
+    def _generate_next_value_(name, start, count, last_values):
+        """Return the name of an atomic symbol as its value and 'atom' as a
+        rule class. See class attributes for the complete list of members.
+        """
+        return name, 'atom'
 
-# (For `Token` class) Token methods and properties.
-__TOKEN_METHODS: List[Tuple[str, Callable]] = [
-    (
-        '__init__',
-        lambda self, token, rule_class: __init_token_instance_attrs(
-            self, token, rule_class)
-    ),
-]
-# (For `Token` class) SMILES token keys, values, and their rule classes.
-__TOKEN_NAMES: List[Tuple[str, Tuple[str, str]]] = [
-    (element, (element, 'atom'))
-    for element in _ATOMIC_SYMBOLS + [e.lower() for e in _ATOMIC_SYMBOLS]
-]
-__TOKEN_NAMES += [
-    (key, (value, 'bbrdo'))
-    for key, value in _BBRDO.items()
-]
-__TOKEN_NAMES += [
-    (key, (value, 'special'))
-    for key, value in _SPECIAL.items()
-]
+    # Atomic symbols.
+    Ac = enum.auto()
+    Ag = enum.auto()
+    Al = enum.auto()
+    Am = enum.auto()
+    Ar = enum.auto()
+    As = enum.auto()
+    At = enum.auto()
+    Au = enum.auto()
+    B = enum.auto()
+    Ba = enum.auto()
+    Be = enum.auto()
+    Bh = enum.auto()
+    Bi = enum.auto()
+    Bk = enum.auto()
+    Br = enum.auto()
+    C = enum.auto()
+    Ca = enum.auto()
+    Cd = enum.auto()
+    Ce = enum.auto()
+    Cf = enum.auto()
+    Cl = enum.auto()
+    Cm = enum.auto()
+    Co = enum.auto()
+    Cr = enum.auto()
+    Cs = enum.auto()
+    Cu = enum.auto()
+    Db = enum.auto()
+    Dy = enum.auto()
+    Er = enum.auto()
+    Es = enum.auto()
+    Eu = enum.auto()
+    F = enum.auto()
+    Fe = enum.auto()
+    Fm = enum.auto()
+    Fr = enum.auto()
+    Ga = enum.auto()
+    Gd = enum.auto()
+    Ge = enum.auto()
+    H = enum.auto()
+    He = enum.auto()
+    Hf = enum.auto()
+    Hg = enum.auto()
+    Ho = enum.auto()
+    Hs = enum.auto()
+    I = enum.auto()
+    In = enum.auto()
+    Ir = enum.auto()
+    K = enum.auto()
+    Kr = enum.auto()
+    La = enum.auto()
+    Li = enum.auto()
+    Lr = enum.auto()
+    Lu = enum.auto()
+    Md = enum.auto()
+    Mg = enum.auto()
+    Mn = enum.auto()
+    Mo = enum.auto()
+    Mt = enum.auto()
+    N = enum.auto()
+    Na = enum.auto()
+    Nb = enum.auto()
+    Nd = enum.auto()
+    Ne = enum.auto()
+    Ni = enum.auto()
+    No = enum.auto()
+    Np = enum.auto()
+    O = enum.auto()
+    Os = enum.auto()
+    P = enum.auto()
+    Pa = enum.auto()
+    Pb = enum.auto()
+    Pd = enum.auto()
+    Pm = enum.auto()
+    Po = enum.auto()
+    Pr = enum.auto()
+    Pt = enum.auto()
+    Pu = enum.auto()
+    Ra = enum.auto()
+    Rb = enum.auto()
+    Re = enum.auto()
+    Rf = enum.auto()
+    Rh = enum.auto()
+    Rn = enum.auto()
+    Ru = enum.auto()
+    S = enum.auto()
+    Sb = enum.auto()
+    Sc = enum.auto()
+    Se = enum.auto()
+    Sg = enum.auto()
+    Si = enum.auto()
+    Sm = enum.auto()
+    Sn = enum.auto()
+    Sr = enum.auto()
+    Ta = enum.auto()
+    Tb = enum.auto()
+    Tc = enum.auto()
+    Te = enum.auto()
+    Th = enum.auto()
+    Ti = enum.auto()
+    Tl = enum.auto()
+    Tm = enum.auto()
+    U = enum.auto()
+    V = enum.auto()
+    W = enum.auto()
+    Xe = enum.auto()
+    Y = enum.auto()
+    Yb = enum.auto()
+    Zn = enum.auto()
+    Zr = enum.auto()
 
+    # Other specifications.
+    BOND_SINGLE = ('-', 'other')
+    BOND_DOUBLE = ('=', 'other')
+    BOND_TRIPLE = ('#', 'other')
+    BOND_AROMATIC = (':', 'other')
+    BRANCH_LEFT = ('(', 'other')
+    BRANCH_RIGHT = (')', 'other')
+    HIGHER_RING_CLOSURE = ('%', 'other')
+    PERIOD = ('.', 'other')
+    BRACKET_LEFT = ('[', 'other')
+    BRACKET_RIGHT = (']', 'other')
+    CHIRAL_SPEC = ('@', 'other')
+    CHARGE_POSITIVE = ('+', 'other')
+    CHARGE_NEGATIVE = ('-', 'other')
+    nH = ('[nH]', 'other')
+    ONE = ('1', 'other')
+    TWO = ('2', 'other')
+    THREE = ('3', 'other')
+    FOUR = ('4', 'other')
+    FIVE = ('5', 'other')
+    SIX = ('6', 'other')
+    SEVEN = ('7', 'other')
+    EIGHT = ('8', 'other')
+    NINE = ('9', 'other')
 
-Token = enum.Enum(value='Token', names=__TOKEN_NAMES, module=__name__)
-Token.__doc__ = """
-Token enumeration class containing possible tokens from SMILES Vocabulary.
-Every token entry is an attribute, which can be attained by calling
-`Token.TOKEN_NAME`. The values of tokens come in form (value, rule_class),
-in which value is SMILES token and rule class is one of
-{'atom', 'bbord', 'special'}. In case of atoms, the names of tokens are
-identical to the values (atomic symbols), i.e.
-`Token.TOKEN_NAME.name == Token.TOKEN_NAME.value[0]`. Otherwise, the names are
-self-explanatory, i.e. `'=' == TOKEN.BOND_DOUBLE.value[0]`.
-""".lstrip('\n')
+    # Special characters.
+    BOS = ('{', 'special')  # Beginning of SMILES.
+    EOS = ('}', 'special')  # End of SMILES.
+    PAD = ('_', 'special')  # Padding.
+    UNK = ('*', 'special')  # Unknown.
+
+    def __init__(self, token, rule_class):
+        self.token = token
+        self.rule_class = rule_class
+
+    @classmethod
+    def augment(
+            cls,
+            smiles: str,
+            padding_len: int = 0,
+    ) -> str:
+        """Prepend Beginnig-of-SMILES token and append End-of-SMILES token
+        to the specified SMILES string `smiles`. If specified, append Padding
+        token `padding_len` times.
+
+        Parameters
+        ----------
+        smiles : str
+            Original SMILES string.
+        padding_len : int, default 0
+            The number of Padding tokens to include.
+
+        Returns
+        -------
+        modified_smiles : str
+            Modified SMILES string.
+        """
+        return (
+            f"{cls.BOS.token}"
+            f"{cls.crop(smiles)}"
+            f"{cls.PAD.token * padding_len}"
+            f"{cls.EOS.token}"
+        )
+
+    @classmethod
+    def crop(
+            cls,
+            smiles: str,
+            padding: bool = False,
+    ) -> str:
+        """Remove Beginnig-of-SMILES, End-of-SMILES, and, if specified, Padding
+        tokens from `smiles`.
+
+        Parameters
+        ----------
+        smiles : str
+            Original SMILES string.
+        padding : bool, default False
+            Whether to remove the Padding token.
+
+        Returns
+        -------
+        modified_smiles : str
+            Modified SMILES string.
+        """
+        modified_smiles = smiles.lstrip(cls.BOS.token).rstrip(cls.EOS.token)
+        if padding:
+            modified_smiles = modified_smiles.replace(cls.PAD.token, '')
+
+        return modified_smiles
+
+    @classmethod
+    def get_rule_class_members(cls, rule_class: str) -> FrozenSet[str]:
+        """Return immutable set of token values from rule class `rule_class`.
+
+        Parameters
+        ----------
+        cls : Token
+            Token enumeration.
+        rule_class : {'atom', 'bbrdo', 'special'}
+            Rule class.
+
+        Returns
+        -------
+        members : frozenset of str
+            Token values from `rule_class`.
+        """
+        return frozenset(
+            map(
+                lambda entry: entry.token,
+                filter(
+                    lambda entry: entry.rule_class == rule_class,
+                    iter(cls)
+                )
+            )
+        )
 
 
 class Corpus:

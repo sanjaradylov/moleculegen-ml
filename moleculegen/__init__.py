@@ -8,6 +8,7 @@ __status__ = 'Development'
 __version__ = 'beta'
 
 
+from .base import Token
 from .data import (
     SMILESDataset,
     SMILESDataLoader,
@@ -29,6 +30,7 @@ from .vocab import (
 
 
 __all__ = [
+    'Token',
     'SpecialTokens',
 
     'count_tokens',
