@@ -19,7 +19,6 @@ from .model import (
 )
 from .utils import (
     Perplexity,
-    SpecialTokens,
     get_mask_for_loss,
 )
 from .vocab import (
@@ -31,7 +30,6 @@ from .vocab import (
 
 __all__ = [
     'Token',
-    'SpecialTokens',
 
     'count_tokens',
     'get_mask_for_loss',

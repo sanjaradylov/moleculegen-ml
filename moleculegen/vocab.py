@@ -23,8 +23,7 @@ from typing import Counter, Dict, List, Optional, Sequence, Union
 
 from mxnet.gluon.data import SimpleDataset
 
-from .base import Corpus
-from .utils import SpecialTokens
+from .base import Corpus, Token
 
 
 class Vocabulary:
@@ -93,9 +92,8 @@ class Vocabulary:
         self._token_freqs: Dict[str, int] = dict(sorted(
             counter.items(), key=lambda c: c[1], reverse=True))
 
-        self._idx_to_token: List[str] = [
-            token.value for token in SpecialTokens.__members__.values()
-        ]
+        self._idx_to_token: List[str] = list(
+            Token.get_rule_class_members('special'))
         self._token_to_idx: Dict[str, int] = {
             token: id_ for id_, token in enumerate(self._idx_to_token)
         }
@@ -132,10 +130,10 @@ class Vocabulary:
             When `tokens` are of unsupported type.
         """
         if isinstance(tokens, str) and len(tokens) == 1:
-            return self._token_to_idx.get(tokens, SpecialTokens.UNK.value)
+            return self._token_to_idx.get(tokens, Token.UNK.token)
         elif isinstance(tokens, Sequence):
             return [
-                self._token_to_idx.get(token, SpecialTokens.UNK.value)
+                self._token_to_idx.get(token, Token.UNK.token)
                 for token in tokens
             ]
         else:

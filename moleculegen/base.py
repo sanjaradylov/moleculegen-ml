@@ -240,7 +240,7 @@ class Token(enum.Enum):
         ----------
         cls : Token
             Token enumeration.
-        rule_class : {'atom', 'bbrdo', 'special'}
+        rule_class : {'atom', 'other', 'special'}
             Rule class.
 
         Returns
