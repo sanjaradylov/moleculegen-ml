@@ -165,7 +165,7 @@ class SMILESRNNModel(gluon.Block):
     def generate(
             self,
             vocabulary: Vocabulary,
-            prefix: str = Token.BOS.token,
+            prefix: str = Token.BOS,
             max_length: int = 100,
             ctx: context.Context = context.cpu(),
             state_init_func: Optional[Callable] = None,
@@ -176,7 +176,7 @@ class SMILESRNNModel(gluon.Block):
         ----------
         vocabulary : Vocabulary
             The Vocabulary instance, which provides id-to-token conversion.
-        prefix : str, default: Token.BOS.token
+        prefix : str, default: Token.BOS
             The prefix of a SMILES string to generate
         max_length : int, default: 100
             The maximum number of tokens to generate.
@@ -205,9 +205,9 @@ class SMILESRNNModel(gluon.Block):
 
             token_id = npx.softmax(output).argmax().astype(np.int32).item()
             token = vocabulary.idx_to_token[token_id]
-            if token in (Token.EOS.token, Token.PAD.token):
+            if token in (Token.EOS, Token.PAD):
                 break
 
             smiles += token
 
-        return smiles.lstrip(Token.BOS.token)
+        return smiles.lstrip(Token.BOS)

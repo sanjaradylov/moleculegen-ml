@@ -11,12 +11,12 @@ class TokenTestCase(unittest.TestCase):
     def setUp(self):
         self.smiles = 'CN=C=O'
         self.n_pad = 4
-        self.aug_no_pad = Token.BOS.token + self.smiles + Token.EOS.token
+        self.aug_no_pad = Token.BOS + self.smiles + Token.EOS
         self.aug_w_pad = (
-            Token.BOS.token
+            Token.BOS
             + self.smiles
-            + Token.PAD.token * self.n_pad
-            + Token.EOS.token
+            + Token.PAD * self.n_pad
+            + Token.EOS
         )
 
     def test_augment(self):
@@ -26,16 +26,16 @@ class TokenTestCase(unittest.TestCase):
         )
         self.assertEqual(
             self.aug_no_pad,
-            Token.augment((Token.BOS.token*5) + self.aug_no_pad),
+            Token.augment((Token.BOS*5) + self.aug_no_pad),
         )
         self.assertEqual(
             self.aug_no_pad,
-            Token.augment(self.aug_no_pad + (Token.EOS.token*3)),
+            Token.augment(self.aug_no_pad + (Token.EOS*3)),
         )
         self.assertEqual(
             self.aug_no_pad,
             Token.augment(
-                (Token.BOS.token*4) + self.aug_no_pad + (Token.EOS.token*4))
+                (Token.BOS*4) + self.aug_no_pad + (Token.EOS*4))
         )
 
     def test_augment_without_padding(self):
@@ -59,16 +59,16 @@ class TokenTestCase(unittest.TestCase):
         )
         self.assertEqual(
             self.smiles,
-            Token.crop((Token.BOS.token*5) + self.aug_no_pad),
+            Token.crop((Token.BOS*5) + self.aug_no_pad),
         )
         self.assertEqual(
             self.smiles,
-            Token.crop(self.aug_no_pad + (Token.EOS.token*3)),
+            Token.crop(self.aug_no_pad + (Token.EOS*3)),
         )
         self.assertEqual(
             self.smiles,
             Token.crop(
-                (Token.BOS.token*4) + self.aug_no_pad + (Token.EOS.token*4))
+                (Token.BOS*4) + self.aug_no_pad + (Token.EOS*4))
         )
 
     def test_crop_without_padding(self):
@@ -81,11 +81,23 @@ class TokenTestCase(unittest.TestCase):
             Token.crop(self.smiles),
         )
 
-    def test_rule_class_set(self):
-        self.assertEqual(
-            frozenset('{}*_'),
-            Token.get_rule_class_members(rule_class='special')
-        )
+    def test_tokenize(self):
+
+        def test(smiles):
+            self.assertListEqual(
+                Token.tokenize(''.join(smiles)),
+                smiles
+            )
+
+        # Only single-char tokens.
+        test(['C', 'n', '(', '=', 'O', ')'])
+
+        # Single-char and double-char tokens.
+        test(['O', '@', 'N', '2', 'Os', 'i', '[', 'Ni', ']'])
+
+        # Single-char and double-char tokens w/ two consecutive tokens
+        # composing an atom (they should be divided into two separate tokens).
+        test(['C', 'N', 'C', 'n', 'o', 'Cl', 'C', 'Cl', 'O'])
 
 
 if __name__ == '__main__':

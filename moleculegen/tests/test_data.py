@@ -24,7 +24,7 @@ class DataTestCase(unittest.TestCase):
 
         self.assertTrue(
             all(
-                s.startswith(Token.BOS.token) and s.endswith(Token.EOS.token)
+                s.startswith(Token.BOS) and s.endswith(Token.EOS)
                 for s in dataset
             )
         )

@@ -2,25 +2,9 @@
 Utilities.
 """
 
-from typing import NamedTuple, Sequence, Tuple, Union
+from typing import Sequence, Tuple, Union
 
 from mxnet import metric, np, npx
-
-
-class Batch(NamedTuple):
-    x: np.ndarray
-    y: np.ndarray
-    v_x: np.ndarray
-    v_y: np.ndarray
-    s: bool
-
-
-Batch.__doc__ += ": Named tuple that stores mini-batch items"
-Batch.x.__doc__ += "\nInput samples."
-Batch.y.__doc__ += "\nOutput samples."
-Batch.v_x.__doc__ += "\nValid lengths for input samples."
-Batch.v_y.__doc__ += "\nValid lengths for output samples."
-Batch.s.__doc__ += "\nWhether to initialize state or not."
 
 
 class Perplexity(metric.Perplexity):
@@ -73,7 +57,7 @@ def get_mask_for_loss(
         label_shape: Tuple[int, ...],
         valid_lengths: np.ndarray,
 ) -> np.ndarray:
-    """Get mask of valid labels, i.e. Token.PAD.token is invalid,
+    """Get mask of valid labels, i.e. Token.PAD is invalid,
     therefore filled with zeros, and other tokens retain their weights = 1.
 
     Parameters

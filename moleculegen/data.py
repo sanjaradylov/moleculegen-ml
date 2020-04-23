@@ -16,8 +16,7 @@ from typing import AnyStr, Iterator, List, Optional, Tuple
 from mxnet import np
 from mxnet.gluon.data import SimpleDataset
 
-from .base import Token
-from .utils import Batch
+from .base import Batch, Token
 from .vocab import Vocabulary
 
 
@@ -266,7 +265,7 @@ class SMILESDataLoader:
             # FIXME Iterating over matrix is somewhat brute and ineffective.
             for seq in sample:
                 for i, s in enumerate(seq):
-                    if s == self._vocab.token_to_idx[Token.PAD.token]:
+                    if s == self._vocab.token_to_idx[Token.PAD]:
                         lengths.append(i)
                         break
                 else:
@@ -309,7 +308,7 @@ class SMILESDataLoader:
         # (batch[:, :-1], batch[:, 1:]).
         max_len += 1
 
-        pad_token_idx = self._vocab.token_to_idx[Token.PAD.token]
+        pad_token_idx = self._vocab.token_to_idx[Token.PAD]
         new_items_list: List[List[int]] = []
 
         for item_list in item_lists:

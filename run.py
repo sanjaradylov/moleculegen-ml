@@ -163,7 +163,7 @@ def train(
         ),
         verbose: int = 0,
         ctx: context.Context = context.cpu(0),
-        prefix: str = Token.BOS.token,
+        prefix: str = Token.BOS,
         max_gen_length: int = 100,
         model_params_in: Union[IO, str] = None,
         model_params_out: Union[IO, str] = None,
@@ -217,11 +217,6 @@ def train(
             init=init.Normal(sigma=0.1),
         )
 
-    for key, value in model.collect_params().items():
-        data = value.data()
-        print(f'{key!r} weights norm: {np.linalg.norm(data).item():.3f}')
-        print(f'{key!r} grad norm: {np.linalg.norm(data.grad).item():.3f}')
-
     # Define trainer.
     trainer = gluon.Trainer(model.collect_params(), opt, optimizer_params)
 
@@ -248,7 +243,7 @@ def train(
 
             # Every mini-batch entry is a substring of (padded) SMILES string.
             # If entries begin with beginning-of-SMILES token
-            # `Token.BOS.token` (i.e. our model has not seen any part
+            # `Token.BOS` (i.e. our model has not seen any part
             # of this mini-batch), then we initialize a new state list.
             # Otherwise, we keep the previous state list and detach it from
             # the computation graph.
@@ -265,7 +260,7 @@ def train(
                 p_outputs, states = model(inputs, states)
 
                 # Get a label mask, which labels 1 for any valid token and 0
-                # for padding token `Token.PAD.token`.
+                # for padding token `Token.PAD`.
                 label_mask = get_mask_for_loss(inputs.shape, batch.v_y)
                 label_mask = label_mask.T.reshape((-1,)).as_in_context(ctx)
 
@@ -485,7 +480,7 @@ def process_options() -> argparse.Namespace:
     log_options.add_argument(
         '-r', '--prefix',
         help='Initial symbol(s) of a SMILES string to generate.',
-        default=Token.BOS.token,
+        default=Token.BOS,
     )
     log_options.add_argument(
         '-m', '--max_gen_length',

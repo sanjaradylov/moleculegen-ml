@@ -9,172 +9,43 @@ Corpus
     Descriptor that stores corpus of `Vocabulary` or similar instances.
 """
 
-import enum
-from typing import Any, FrozenSet, List, Optional, Type
+from typing import Any, List, NamedTuple, Optional, Type
+from mxnet import np
 
 
-class Token(enum.Enum):
-    """Token enumeration class containing possible tokens from SMILES
-    Vocabulary. Every token entry is an attribute, which can be attained by
-    calling `Token.TOKEN_NAME`. The values of tokens come in form
-    (value, rule_class), in which value is SMILES token and rule class is one
-    of {'atom', 'other', 'special'}. In case of atoms, the names of tokens are
-    identical to the values (atomic symbols), i.e.
-    `Token.TOKEN_NAME.name == Token.TOKEN_NAME.value[0]`. Otherwise, the names
-    are self-explanatory, i.e. `'=' == TOKEN.BOND_DOUBLE.value[0]`.
+class Token:
+    """Token class containing sets of valid SMILES symbols grouped by rule
+    class (atoms, non-atomic symbols like bonds and branches, and special
+    symbols like beginning-of-SMILES and padding).
     """
 
-    def _generate_next_value_(name, start, count, last_values):
-        """Return the name of an atomic symbol as its value and 'atom' as a
-        rule class. See class attributes for the complete list of members.
-        """
-        return name, 'atom'
+    # Atomic symbols. (We store the original ones, although lowercase symbols
+    # should also be considered during tokenization).
+    ATOMS = frozenset([
+        'Ac', 'Ag', 'Al', 'Am', 'Ar', 'As', 'At', 'Au', 'B', 'Ba', 'Be', 'Bh',
+        'Bi', 'Bk', 'Br', 'C', 'Ca', 'Cd', 'Ce', 'Cf', 'Cl', 'Cm', 'Co', 'Cr',
+        'Cs', 'Cu', 'Db', 'Dy', 'Er', 'Es', 'Eu', 'F', 'Fe', 'Fm', 'Fr', 'Ga',
+        'Gd', 'Ge', 'H', 'He', 'Hf', 'Hg', 'Ho', 'Hs', 'I', 'In', 'Ir', 'K',
+        'Kr', 'La', 'Li', 'Lr', 'Lu', 'Md', 'Mg', 'Mn', 'Mo', 'Mt', 'N', 'Na',
+        'Nb', 'Nd', 'Ne', 'Ni', 'No', 'Np', 'O', 'Os', 'P', 'Pa', 'Pb', 'Pd',
+        'Pm', 'Po', 'Pr', 'Pt', 'Pu', 'Ra', 'Rb', 'Re', 'Rf', 'Rh', 'Rn',
+        'Ru', 'S', 'Sb', 'Sc', 'Se', 'Sg', 'Si', 'Sm', 'Sn', 'Sr', 'Ta', 'Tb',
+        'Tc', 'Te', 'Th', 'Ti', 'Tl', 'Tm', 'U', 'V', 'W', 'Xe', 'Y', 'Yb',
+        'Zn', 'Zr'
+    ])
 
-    # Atomic symbols.
-    Ac = enum.auto()
-    Ag = enum.auto()
-    Al = enum.auto()
-    Am = enum.auto()
-    Ar = enum.auto()
-    As = enum.auto()
-    At = enum.auto()
-    Au = enum.auto()
-    B = enum.auto()
-    Ba = enum.auto()
-    Be = enum.auto()
-    Bh = enum.auto()
-    Bi = enum.auto()
-    Bk = enum.auto()
-    Br = enum.auto()
-    C = enum.auto()
-    Ca = enum.auto()
-    Cd = enum.auto()
-    Ce = enum.auto()
-    Cf = enum.auto()
-    Cl = enum.auto()
-    Cm = enum.auto()
-    Co = enum.auto()
-    Cr = enum.auto()
-    Cs = enum.auto()
-    Cu = enum.auto()
-    Db = enum.auto()
-    Dy = enum.auto()
-    Er = enum.auto()
-    Es = enum.auto()
-    Eu = enum.auto()
-    F = enum.auto()
-    Fe = enum.auto()
-    Fm = enum.auto()
-    Fr = enum.auto()
-    Ga = enum.auto()
-    Gd = enum.auto()
-    Ge = enum.auto()
-    H = enum.auto()
-    He = enum.auto()
-    Hf = enum.auto()
-    Hg = enum.auto()
-    Ho = enum.auto()
-    Hs = enum.auto()
-    I = enum.auto()
-    In = enum.auto()
-    Ir = enum.auto()
-    K = enum.auto()
-    Kr = enum.auto()
-    La = enum.auto()
-    Li = enum.auto()
-    Lr = enum.auto()
-    Lu = enum.auto()
-    Md = enum.auto()
-    Mg = enum.auto()
-    Mn = enum.auto()
-    Mo = enum.auto()
-    Mt = enum.auto()
-    N = enum.auto()
-    Na = enum.auto()
-    Nb = enum.auto()
-    Nd = enum.auto()
-    Ne = enum.auto()
-    Ni = enum.auto()
-    No = enum.auto()
-    Np = enum.auto()
-    O = enum.auto()
-    Os = enum.auto()
-    P = enum.auto()
-    Pa = enum.auto()
-    Pb = enum.auto()
-    Pd = enum.auto()
-    Pm = enum.auto()
-    Po = enum.auto()
-    Pr = enum.auto()
-    Pt = enum.auto()
-    Pu = enum.auto()
-    Ra = enum.auto()
-    Rb = enum.auto()
-    Re = enum.auto()
-    Rf = enum.auto()
-    Rh = enum.auto()
-    Rn = enum.auto()
-    Ru = enum.auto()
-    S = enum.auto()
-    Sb = enum.auto()
-    Sc = enum.auto()
-    Se = enum.auto()
-    Sg = enum.auto()
-    Si = enum.auto()
-    Sm = enum.auto()
-    Sn = enum.auto()
-    Sr = enum.auto()
-    Ta = enum.auto()
-    Tb = enum.auto()
-    Tc = enum.auto()
-    Te = enum.auto()
-    Th = enum.auto()
-    Ti = enum.auto()
-    Tl = enum.auto()
-    Tm = enum.auto()
-    U = enum.auto()
-    V = enum.auto()
-    W = enum.auto()
-    Xe = enum.auto()
-    Y = enum.auto()
-    Yb = enum.auto()
-    Zn = enum.auto()
-    Zr = enum.auto()
+    # Bonds, charges, etc.
+    NON_ATOMS = frozenset([
+        '-', '=', '#', ':', '(', ')', '%', '.', '[', ']', '@', '+', '-',
+        '[nH]', '1', '2', '3', '4', '5', '6', '7', '8', '9'
+    ])
 
-    # Other specifications.
-    BOND_SINGLE = ('-', 'other')
-    BOND_DOUBLE = ('=', 'other')
-    BOND_TRIPLE = ('#', 'other')
-    BOND_AROMATIC = (':', 'other')
-    BRANCH_LEFT = ('(', 'other')
-    BRANCH_RIGHT = (')', 'other')
-    HIGHER_RING_CLOSURE = ('%', 'other')
-    PERIOD = ('.', 'other')
-    BRACKET_LEFT = ('[', 'other')
-    BRACKET_RIGHT = (']', 'other')
-    CHIRAL_SPEC = ('@', 'other')
-    CHARGE_POSITIVE = ('+', 'other')
-    CHARGE_NEGATIVE = ('-', 'other')
-    nH = ('[nH]', 'other')
-    ONE = ('1', 'other')
-    TWO = ('2', 'other')
-    THREE = ('3', 'other')
-    FOUR = ('4', 'other')
-    FIVE = ('5', 'other')
-    SIX = ('6', 'other')
-    SEVEN = ('7', 'other')
-    EIGHT = ('8', 'other')
-    NINE = ('9', 'other')
-
-    # Special characters.
-    BOS = ('{', 'special')  # Beginning of SMILES.
-    EOS = ('}', 'special')  # End of SMILES.
-    PAD = ('_', 'special')  # Padding.
-    UNK = ('*', 'special')  # Unknown.
-
-    def __init__(self, token, rule_class):
-        self.token = token
-        self.rule_class = rule_class
+    # Special tokens not presented in the SMILES vocabulary.
+    BOS = '{'  # Beginning of SMILES.
+    EOS = '}'  # End of SMILES.
+    PAD = '_'  # Padding.
+    UNK = '*'  # Unknown.
+    SPECIAL = frozenset(BOS + EOS + PAD + UNK)
 
     @classmethod
     def augment(
@@ -198,12 +69,7 @@ class Token(enum.Enum):
         modified_smiles : str
             Modified SMILES string.
         """
-        return (
-            f"{cls.BOS.token}"
-            f"{cls.crop(smiles)}"
-            f"{cls.PAD.token * padding_len}"
-            f"{cls.EOS.token}"
-        )
+        return f'{cls.BOS}{cls.crop(smiles)}{cls.PAD * padding_len}{cls.EOS}'
 
     @classmethod
     def crop(
@@ -226,37 +92,96 @@ class Token(enum.Enum):
         modified_smiles : str
             Modified SMILES string.
         """
-        modified_smiles = smiles.lstrip(cls.BOS.token).rstrip(cls.EOS.token)
+        modified_smiles = smiles.lstrip(cls.BOS).rstrip(cls.EOS)
         if padding:
-            modified_smiles = modified_smiles.replace(cls.PAD.token, '')
+            modified_smiles = modified_smiles.replace(cls.PAD, '')
 
         return modified_smiles
 
     @classmethod
-    def get_rule_class_members(cls, rule_class: str) -> FrozenSet[str]:
-        """Return immutable set of token values from rule class `rule_class`.
+    def tokenize(cls, smiles: str) -> Optional[List[str]]:
+        """Tokenize `smiles` string.
 
         Parameters
         ----------
-        cls : Token
-            Token enumeration.
-        rule_class : {'atom', 'other', 'special'}
-            Rule class.
+        smiles : str
+            SMILES string.
 
         Returns
         -------
-        members : frozenset of str
-            Token values from `rule_class`.
+        tokens : list of str or None
+            None, if at least one character not from cls.
+            list of tokens from cls, otherwise.
+
+        TODO:
+        Notes
+        -----
+        This tokenization method is temporary as it does not take into account
+        prohibited atoms. It is probably not applicable to all cases of data.
+        However, it is lot better than simply treating every character as a
+        token when in fact two or more characters (e.g. [nH] and Cl) are all
+        single entities. To comprehend how to tokenize universally and
+        effectively, some research on the domain topic is required.
         """
-        return frozenset(
-            map(
-                lambda entry: entry.token,
-                filter(
-                    lambda entry: entry.rule_class == rule_class,
-                    iter(cls)
-                )
-            )
-        )
+        token_list: List[str] = []
+
+        char_no = 0
+        while char_no < len(smiles):
+            one_char_token = smiles[char_no]
+            two_char_token = smiles[char_no:char_no + 2]
+            four_char_token = smiles[char_no:char_no + 4]
+
+            # Try matching [nH].
+            if four_char_token in cls.NON_ATOMS:
+                token_list.append(four_char_token)
+                char_no += 4
+            elif (
+                    # Double-char token that cannot be represented as
+                    # two separate atoms; 'no' will be treated as two
+                    # single-char tokens 'n' and 'o', while 'Se' or 'Na' as
+                    # double-char.
+                    two_char_token.title() in cls.ATOMS
+                    and two_char_token[-1].title() not in cls.ATOMS
+                    or
+                    two_char_token[0].isupper()
+                    and two_char_token in cls.ATOMS
+            ):
+                token_list.append(two_char_token)
+                char_no += 2
+            elif (
+                    one_char_token.title() in cls.ATOMS  # n, o, etc.;
+                    or one_char_token in cls.NON_ATOMS   # -, #, \., etc.;
+                    or one_char_token in cls.SPECIAL     # {, }, _, *.
+            ):
+                token_list.append(one_char_token)
+                char_no += 1
+            else:
+                return None
+
+        return token_list
+
+
+class Batch(NamedTuple):
+    """Named tuple that stores mini-batch items.
+
+    Attributes
+    ----------
+    x : mxnet.np.ndarray
+        Input sample.
+    y : mxnet.np.ndarray
+        Output sample.
+    v_x : mxnet.np.ndarray
+        Valid lengths for input sample.
+    v_y : mxnet.np.ndarray
+        Valid lengths for output sample.
+    s : bool
+        Whether to (re-)initialize state or not.
+    """
+    x: np.ndarray
+    y: np.ndarray
+    v_x: np.ndarray
+    v_y: np.ndarray
+    s: bool
 
 
 class Corpus:
