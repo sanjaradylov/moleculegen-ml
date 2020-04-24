@@ -301,9 +301,13 @@ class SMILESDataLoader:
         """
         # Get the maximum string length among all entries in a batch.
         max_len = max(map(len, item_lists))
-        # Make it divisible by self.n_steps so that we can iterate over the
-        # batch max_len // self.n_steps times and retrieve self.n_steps tokens.
-        max_len = (max_len // self.n_steps + 1) * self.n_steps
+
+        if max_len % self.n_steps != 0:
+            # Make it divisible by self.n_steps so that we can iterate
+            # over the batch max_len // self.n_steps times and
+            # retrieve self.n_steps tokens.
+            max_len = (max_len // self.n_steps + 1) * self.n_steps
+
         # Increment it since we divide `batch` into
         # (batch[:, :-1], batch[:, 1:]).
         max_len += 1
