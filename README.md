@@ -11,6 +11,13 @@ In [Stage 2](https://github.com/sanjaradylov/moleculegen-ml/projects/2), we choo
 targets of interest to create a predictive model, and then perform transfer learning on a
 focused set of active molecules.
 
+## Documentation
+For now, our [wiki](https://github.com/sanjaradylov/moleculegen-ml/wiki) serves as a
+documentation (or rather a user guide) for the project.
+
+[Projects](https://github.com/sanjaradylov/moleculegen-ml/projects) keep track of the
+current state of the project. 
+
 ## Installation
 
 It is convenient to set up dependencies using environment management systems like
@@ -50,7 +57,8 @@ $ cd data
 $ sqlite3 -csv YourChEMBL.db < stage1_smiles.sql > stage1_compounds.csv
 ```
 
-The main module is `run.py`. To observe the command line arguments, print a help message:
+The main module is `run.py`. To observe the command line arguments including parameter
+loading/saving and hyperparameters, print a help message:
 ```bash
 $ python3 run.py --help
 ``` 
