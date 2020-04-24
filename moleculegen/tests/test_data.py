@@ -5,9 +5,9 @@ Test `SMILESDataset` and `SMILESDataLoader` classes and their components.
 import unittest
 
 from moleculegen import (
-    SpecialTokens,
     SMILESDataset,
     SMILESDataLoader,
+    Token,
 )
 from moleculegen.tests.utils import TempSMILESFile
 
@@ -21,9 +21,16 @@ class DataTestCase(unittest.TestCase):
 
     def test_read(self):
         dataset = SMILESDataset(self.fh.name)
+
+        self.assertTrue(
+            all(
+                s.startswith(Token.BOS) and s.endswith(Token.EOS)
+                for s in dataset
+            )
+        )
         self.assertListEqual(
             self.item_list,
-            [SpecialTokens.remove_tokens_from(sample) for sample in dataset],
+            [Token.crop(s) for s in dataset],
         )
 
         self.assertEqual(

@@ -8,6 +8,7 @@ __status__ = 'Development'
 __version__ = 'beta'
 
 
+from .base import Token
 from .data import (
     SMILESDataset,
     SMILESDataLoader,
@@ -18,7 +19,6 @@ from .model import (
 )
 from .utils import (
     Perplexity,
-    SpecialTokens,
     get_mask_for_loss,
 )
 from .vocab import (
@@ -29,7 +29,7 @@ from .vocab import (
 
 
 __all__ = [
-    'SpecialTokens',
+    'Token',
 
     'count_tokens',
     'get_mask_for_loss',

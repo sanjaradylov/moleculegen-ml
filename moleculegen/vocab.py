@@ -23,8 +23,7 @@ from typing import Counter, Dict, List, Optional, Sequence, Union
 
 from mxnet.gluon.data import SimpleDataset
 
-from .base import Corpus
-from .utils import SpecialTokens
+from .base import Corpus, Token
 
 
 class Vocabulary:
@@ -79,23 +78,21 @@ class Vocabulary:
         self._need_corpus = need_corpus
         if self._need_corpus:
             self._all_tokens: List[List[str]] = (
-                tokens or tokenize([sample for sample in dataset]))
+                tokens or [Token.tokenize(sample) for sample in dataset])
         else:
             self._all_tokens = None
 
         tokens: List[List[str]] = (
             tokens
             or self._all_tokens
-            or tokenize([sample for sample in dataset])
+            or [Token.tokenize(sample) for sample in dataset]
         )
         counter: Counter[str] = counter or count_tokens(tokens)
 
         self._token_freqs: Dict[str, int] = dict(sorted(
             counter.items(), key=lambda c: c[1], reverse=True))
 
-        self._idx_to_token: List[str] = [
-            token.value for token in SpecialTokens.__members__.values()
-        ]
+        self._idx_to_token: List[str] = list(Token.SPECIAL)
         self._token_to_idx: Dict[str, int] = {
             token: id_ for id_, token in enumerate(self._idx_to_token)
         }
@@ -131,15 +128,20 @@ class Vocabulary:
         KeyError
             When `tokens` are of unsupported type.
         """
-        if isinstance(tokens, str) and len(tokens) == 1:
-            return self._token_to_idx.get(tokens, SpecialTokens.UNK.value)
-        elif isinstance(tokens, Sequence):
+        unknown_idx = self._token_to_idx[Token.UNK]
+
+        if isinstance(tokens, str):
+            return self._token_to_idx.get(tokens, unknown_idx)
+        elif isinstance(tokens, (list, tuple)):
             return [
-                self._token_to_idx.get(token, SpecialTokens.UNK.value)
+                self._token_to_idx.get(token, unknown_idx)
                 for token in tokens
             ]
         else:
-            raise KeyError("`tokens` must be of type str of sequence of str.")
+            raise KeyError(
+                f"`tokens` must be of type str or list/tuple of str, "
+                f"not {type(tokens)}."
+            )
 
     @property
     def idx_to_token(self) -> List[str]:

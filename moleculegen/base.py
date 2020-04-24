@@ -1,8 +1,187 @@
 """
 Base objects for all modules.
+
+Classes
+-------
+Token
+    Token enumeration containing possible tokens from SMILES Vocabulary.
+Corpus
+    Descriptor that stores corpus of `Vocabulary` or similar instances.
 """
 
-from typing import Any, List, Optional, Type
+from typing import Any, List, NamedTuple, Optional, Type
+from mxnet import np
+
+
+class Token:
+    """Token class containing sets of valid SMILES symbols grouped by rule
+    class (atoms, non-atomic symbols like bonds and branches, and special
+    symbols like beginning-of-SMILES and padding).
+    """
+
+    # Atomic symbols. (We store the original ones, although lowercase symbols
+    # should also be considered during tokenization).
+    ATOMS = frozenset([
+        'Ac', 'Ag', 'Al', 'Am', 'Ar', 'As', 'At', 'Au', 'B', 'Ba', 'Be', 'Bh',
+        'Bi', 'Bk', 'Br', 'C', 'Ca', 'Cd', 'Ce', 'Cf', 'Cl', 'Cm', 'Co', 'Cr',
+        'Cs', 'Cu', 'Db', 'Dy', 'Er', 'Es', 'Eu', 'F', 'Fe', 'Fm', 'Fr', 'Ga',
+        'Gd', 'Ge', 'H', 'He', 'Hf', 'Hg', 'Ho', 'Hs', 'I', 'In', 'Ir', 'K',
+        'Kr', 'La', 'Li', 'Lr', 'Lu', 'Md', 'Mg', 'Mn', 'Mo', 'Mt', 'N', 'Na',
+        'Nb', 'Nd', 'Ne', 'Ni', 'No', 'Np', 'O', 'Os', 'P', 'Pa', 'Pb', 'Pd',
+        'Pm', 'Po', 'Pr', 'Pt', 'Pu', 'Ra', 'Rb', 'Re', 'Rf', 'Rh', 'Rn',
+        'Ru', 'S', 'Sb', 'Sc', 'Se', 'Sg', 'Si', 'Sm', 'Sn', 'Sr', 'Ta', 'Tb',
+        'Tc', 'Te', 'Th', 'Ti', 'Tl', 'Tm', 'U', 'V', 'W', 'Xe', 'Y', 'Yb',
+        'Zn', 'Zr'
+    ])
+
+    # Bonds, charges, etc.
+    NON_ATOMS = frozenset([
+        '-', '=', '#', ':', '(', ')', '%', '.', '[', ']', '@', '+', '-',
+        '[nH]', '1', '2', '3', '4', '5', '6', '7', '8', '9'
+    ])
+
+    # Special tokens not presented in the SMILES vocabulary.
+    BOS = '{'  # Beginning of SMILES.
+    EOS = '}'  # End of SMILES.
+    PAD = '_'  # Padding.
+    UNK = '*'  # Unknown.
+    SPECIAL = frozenset(BOS + EOS + PAD + UNK)
+
+    @classmethod
+    def augment(
+            cls,
+            smiles: str,
+            padding_len: int = 0,
+    ) -> str:
+        """Prepend Beginnig-of-SMILES token and append End-of-SMILES token
+        to the specified SMILES string `smiles`. If specified, append Padding
+        token `padding_len` times.
+
+        Parameters
+        ----------
+        smiles : str
+            Original SMILES string.
+        padding_len : int, default 0
+            The number of Padding tokens to include.
+
+        Returns
+        -------
+        modified_smiles : str
+            Modified SMILES string.
+        """
+        return f'{cls.BOS}{cls.crop(smiles)}{cls.PAD * padding_len}{cls.EOS}'
+
+    @classmethod
+    def crop(
+            cls,
+            smiles: str,
+            padding: bool = False,
+    ) -> str:
+        """Remove Beginnig-of-SMILES, End-of-SMILES, and, if specified, Padding
+        tokens from `smiles`.
+
+        Parameters
+        ----------
+        smiles : str
+            Original SMILES string.
+        padding : bool, default False
+            Whether to remove the Padding token.
+
+        Returns
+        -------
+        modified_smiles : str
+            Modified SMILES string.
+        """
+        modified_smiles = smiles.lstrip(cls.BOS).rstrip(cls.EOS)
+        if padding:
+            modified_smiles = modified_smiles.replace(cls.PAD, '')
+
+        return modified_smiles
+
+    @classmethod
+    def tokenize(cls, smiles: str) -> Optional[List[str]]:
+        """Tokenize `smiles` string.
+
+        Parameters
+        ----------
+        smiles : str
+            SMILES string.
+
+        Returns
+        -------
+        tokens : list of str or None
+            None, if at least one character not from cls.
+            list of tokens from cls, otherwise.
+
+        TODO:
+        Notes
+        -----
+        This tokenization method is temporary as it does not take into account
+        prohibited atoms. It is probably not applicable to all cases of data.
+        However, it is lot better than simply treating every character as a
+        token when in fact two or more characters (e.g. [nH] and Cl) are all
+        single entities. To comprehend how to tokenize universally and
+        effectively, some research on the domain topic is required.
+        """
+        token_list: List[str] = []
+
+        char_no = 0
+        while char_no < len(smiles):
+            one_char_token = smiles[char_no]
+            two_char_token = smiles[char_no:char_no + 2]
+            four_char_token = smiles[char_no:char_no + 4]
+
+            # Try matching [nH].
+            if four_char_token in cls.NON_ATOMS:
+                token_list.append(four_char_token)
+                char_no += 4
+            elif (
+                    # Double-char token that cannot be represented as
+                    # two separate atoms; 'no' will be treated as two
+                    # single-char tokens 'n' and 'o', while 'Se' or 'Na' as
+                    # double-char.
+                    two_char_token.title() in cls.ATOMS
+                    and two_char_token[-1].title() not in cls.ATOMS
+                    or
+                    two_char_token[0].isupper()
+                    and two_char_token in cls.ATOMS
+            ):
+                token_list.append(two_char_token)
+                char_no += 2
+            elif (
+                    one_char_token.title() in cls.ATOMS  # n, o, etc.;
+                    or one_char_token in cls.NON_ATOMS   # -, #, \., etc.;
+                    or one_char_token in cls.SPECIAL     # {, }, _, *.
+            ):
+                token_list.append(one_char_token)
+                char_no += 1
+            else:
+                return None
+
+        return token_list
+
+
+class Batch(NamedTuple):
+    """Named tuple that stores mini-batch items.
+
+    Attributes
+    ----------
+    x : mxnet.np.ndarray
+        Input sample.
+    y : mxnet.np.ndarray
+        Output sample.
+    v_x : mxnet.np.ndarray
+        Valid lengths for input sample.
+    v_y : mxnet.np.ndarray
+        Valid lengths for output sample.
+    s : bool
+        Whether to (re-)initialize state or not.
+    """
+    x: np.ndarray
+    y: np.ndarray
+    v_x: np.ndarray
+    v_y: np.ndarray
+    s: bool
 
 
 class Corpus:

@@ -16,7 +16,7 @@ from typing import AnyStr, Iterator, List, Optional, Tuple
 from mxnet import np
 from mxnet.gluon.data import SimpleDataset
 
-from .utils import Batch, SpecialTokens
+from .base import Batch, Token
 from .vocab import Vocabulary
 
 
@@ -80,7 +80,7 @@ class SMILESDataset(SimpleDataset):
 
                 # Add beginning-of-SMILES and end-of-SMILES tokens to prepare
                 # the data for sampling and fitting.
-                smiles = SpecialTokens.add_tokens_to(line.strip())
+                smiles = Token.augment(line.strip())
                 smiles_strings.append(smiles)
 
         return smiles_strings
@@ -246,7 +246,6 @@ class SMILESDataLoader:
             valid lengths.
         """
 
-        # TODO There is a solution not involving matrix lookup.
         def get_valid_lengths(sample: np.ndarray) -> np.ndarray:
             """For every entry in `sample`, return the lengths of subsequences
             containing any valid SMILES tokens excluding padding token.
@@ -266,7 +265,7 @@ class SMILESDataLoader:
             # FIXME Iterating over matrix is somewhat brute and ineffective.
             for seq in sample:
                 for i, s in enumerate(seq):
-                    if s == self._vocab.token_to_idx[SpecialTokens.PAD.value]:
+                    if s == self._vocab.token_to_idx[Token.PAD]:
                         lengths.append(i)
                         break
                 else:
@@ -309,7 +308,7 @@ class SMILESDataLoader:
         # (batch[:, :-1], batch[:, 1:]).
         max_len += 1
 
-        pad_token_idx = self._vocab.token_to_idx[SpecialTokens.PAD.value]
+        pad_token_idx = self._vocab.token_to_idx[Token.PAD]
         new_items_list: List[List[int]] = []
 
         for item_list in item_lists:

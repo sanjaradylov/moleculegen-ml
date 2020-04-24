@@ -4,8 +4,8 @@ Test `Vocabulary` class and its main components.
 
 import unittest
 
+from moleculegen.base import Token
 from moleculegen.data import SMILESDataset
-from moleculegen.utils import SpecialTokens
 from moleculegen.vocab import Vocabulary
 from moleculegen.tests.utils import TempSMILESFile
 
@@ -20,19 +20,23 @@ class VocabTestCase(unittest.TestCase):
         self.vocab = Vocabulary(self.dataset, need_corpus=True)
 
     def test_tokens_and_idx(self):
-        special_tokens = set(
-            token.value for token in SpecialTokens.__members__.values()
-        )
-
         self.assertSequenceEqual(
-            sorted(set(self.temp_file.smiles_strings.replace('\n', ''))),
-            sorted(set(self.vocab.token_to_idx) - special_tokens),
+            # Tokenize the entire dataset to get a set of unique tokens.
+            sorted(
+                set(
+                    Token.tokenize(
+                        self.temp_file.smiles_strings.replace('\n', '')
+                    )
+                )
+            ),
+            # The temporary file is not augmented by the special tokens.
+            sorted(set(self.vocab.token_to_idx) - Token.SPECIAL),
         )
         self.assertSequenceEqual(
             sorted(
                 set(self.vocab.token_to_idx)
                 # Pad and unknown tokens does not appear in the original set.
-                - {SpecialTokens.PAD.value, SpecialTokens.UNK.value}
+                - {Token.PAD, Token.UNK}
             ),
             sorted(set(self.vocab.token_freqs)),
         )
@@ -52,11 +56,14 @@ class VocabTestCase(unittest.TestCase):
         for idx, tokens in zip(self.vocab.corpus, smiles_list):
             # Add special tokens in order to correspond to the loaded corpus
             # for data sampling and model fitting.
-            tokens = SpecialTokens.add_tokens_to(tokens)
+            tokens = Token.augment(tokens)
             # Test id-to-token mapping.
-            self.assertListEqual(self.vocab.get_tokens(idx), list(tokens))
+            self.assertEqual(
+                ''.join(self.vocab.get_tokens(idx)),
+                tokens,
+            )
             # Test token-to-id mapping.
-            self.assertListEqual(idx, self.vocab[tokens])
+            self.assertListEqual(idx, self.vocab[Token.tokenize(tokens)])
 
     def tearDown(self):
         self.fh.close()
