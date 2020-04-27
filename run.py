@@ -15,7 +15,7 @@ import statistics
 import time
 from typing import Any, Dict, IO, Optional, Union
 
-from mxnet import autograd, context, gluon, init, np, npx, optimizer
+from mxnet import autograd, context, gluon, init, lr_scheduler, npx, optimizer
 
 from moleculegen import (
     Token,
@@ -120,8 +120,20 @@ def main():
         dense_layer=dense_layer,
     )
 
+    # Define learning rate scheduler.
+    scheduler = lr_scheduler.FactorScheduler(
+        step=200,
+        factor=0.95,
+        stop_factor_lr=1e-7,
+        base_lr=options.learning_rate,
+        warmup_steps=2000,
+        warmup_begin_lr=1e-6,
+        warmup_mode='linear',
+    )
+
     # Define (hyper)parameters for model training.
     optimizer_params = {
+        'lr_scheduler': scheduler,
         'learning_rate': options.learning_rate,
         'clip_gradient': options.grad_clip_length,
     }
