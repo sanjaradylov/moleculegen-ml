@@ -29,13 +29,8 @@ WITH target_ids AS (
   WHERE
     assay_id IN assay_ids
     AND standard_type IN ('IC50', 'MIC')
-    AND standard_relation IS NOT NULL
-
-  INTERSECT
-
-  SELECT molregno
-  FROM molecule_dictionary
-  WHERE molecule_type = 'Small molecule'
+    AND standard_relation IN ('<', '<<', '<=', '=')
+    AND standard_units = 'nM'
 )
 
 SELECT DISTINCT canonical_smiles

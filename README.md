@@ -1,5 +1,7 @@
 # moleculegen
 
+![PythonVersion](https://img.shields.io/badge/python-3.7-blue)
+
 This project is an attempt to create a Python package for the complete *de novo* drug design
 cycle similar to [Segler et al](#reference).
 
@@ -26,16 +28,10 @@ It is convenient to set up dependencies using environment management systems lik
 
 Download, install, and set up [Miniconda](https://conda.io/en/latest/miniconda.html).
 
-Create a new environment:
+Create a new environment and install dependencies (see `environment.yml` and `requirements.txt`):
 ```bash
-$ conda create -n moleculegen python=3.7
+$ conda env create -f environment.yml
 $ conda activate moleculegen
-```
-
-Install dependencies:
-
-```bash
-$ pip install -r requirements.txt
 ```
 
 Clone the repository:
@@ -50,11 +46,17 @@ $ git clone https://github.com/sanjaradylov/moleculegen-ml.git
 Download [ChEMBL database](https://www.ebi.ac.uk/chembl/).
 
 Create a text file from ChEMBL database according to a specified SQL query
-(note [issues](#issues)):
+(note [issues](#issues)). You can create a dataset manually (without post-processing):
 
-```
+```bash
 $ cd data
 $ sqlite3 -csv YourChEMBL.db < stage1_smiles.sql > stage1_compounds.csv
+```
+or applying several filters (e.g. removal of long SMILES strings) to the loaded dataset:
+```bash
+$ cd scripts
+$ export DB_FILENAME=YourChEMBL.db
+$ python3 process_stage1_data.py -o ../data/stage1_compounds_post_processed.csv
 ```
 
 The main module is `run.py`. To observe the command line arguments including parameter
