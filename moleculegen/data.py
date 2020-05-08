@@ -10,6 +10,7 @@ SMILESDataLoader
 """
 
 import io
+import random
 import warnings
 from typing import AnyStr, Iterator, List, Optional, Tuple
 
@@ -225,6 +226,8 @@ class SMILESDataLoader:
             Mini-batch containing inputs, outputs, and their corresponding
             valid lengths.
         """
+        random.shuffle(self._vocab.corpus)
+
         for i_batch in range(0, len(self._vocab.corpus), self.batch_size):
             curr_slice = slice(i_batch, i_batch + self.batch_size)
             batch = self._pad(self._vocab.corpus[curr_slice])

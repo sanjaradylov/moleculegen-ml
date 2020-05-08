@@ -37,7 +37,8 @@ class Token:
     # Bonds, charges, etc.
     NON_ATOMS = frozenset([
         '-', '=', '#', ':', '(', ')', '%', '.', '[', ']', '@', '+', '-',
-        '[nH]', '1', '2', '3', '4', '5', '6', '7', '8', '9'
+        '[nH]', '1', '2', '3', '4', '5', '6', '7', '8', '9', '\\', '/',
+        '@@', '[C@H]', '[C@@H]',
     ])
 
     # Special tokens not presented in the SMILES vocabulary.
@@ -116,47 +117,50 @@ class Token:
         TODO:
         Notes
         -----
-        This tokenization method is temporary as it does not take into account
-        prohibited atoms. It is probably not applicable to all cases of data.
+        It is probably not applicable to all cases of data.
         However, it is lot better than simply treating every character as a
         token when in fact two or more characters (e.g. [nH] and Cl) are all
         single entities. To comprehend how to tokenize universally and
         effectively, some research on the domain topic is required.
         """
-        token_list: List[str] = []
+        token_list: List[str] = []  # The resulting list of tokens.
 
-        char_no = 0
+        char_no = 0  # Points to the current position.
         while char_no < len(smiles):
-            one_char_token = smiles[char_no]
-            two_char_token = smiles[char_no:char_no + 2]
-            four_char_token = smiles[char_no:char_no + 4]
-
-            # Try matching [nH].
-            if four_char_token in cls.NON_ATOMS:
-                token_list.append(four_char_token)
-                char_no += 4
-            elif (
-                    # Double-char token that cannot be represented as
-                    # two separate atoms; 'no' will be treated as two
-                    # single-char tokens 'n' and 'o', while 'Se' or 'Na' as
-                    # double-char.
-                    two_char_token.title() in cls.ATOMS
-                    and two_char_token[-1].title() not in cls.ATOMS
-                    or
-                    two_char_token[0].isupper()
-                    and two_char_token in cls.ATOMS
-            ):
-                token_list.append(two_char_token)
-                char_no += 2
-            elif (
-                    one_char_token.title() in cls.ATOMS  # n, o, etc.;
-                    or one_char_token in cls.NON_ATOMS   # -, #, \., etc.;
-                    or one_char_token in cls.SPECIAL     # {, }, _, *.
-            ):
-                token_list.append(one_char_token)
-                char_no += 1
+            # Check if tokens of length `n_chars` are in our `smiles`.
+            for n_chars in range(6, 1, -1):
+                token = smiles[char_no:char_no + n_chars]
+                if token in cls.NON_ATOMS:
+                    token_list.append(token)
+                    char_no += n_chars
+                    break
+            # If not, then try processing single- and double-char tokens.
             else:
-                return None
+                one_char_token = smiles[char_no]
+                two_char_token = smiles[char_no:char_no + 2]
+                if (
+                        # Double-char token that cannot be represented as
+                        # two separate atoms; 'no' will be treated as two
+                        # single-char tokens 'n' and 'o', while 'Se' or 'Na' as
+                        # double-char.
+                        two_char_token.title() in cls.ATOMS
+                        and two_char_token[-1].title() not in cls.ATOMS
+                        or
+                        two_char_token[0].isupper()
+                        and two_char_token in cls.ATOMS
+                ):
+                    token_list.append(two_char_token)
+                    char_no += 2
+                elif (
+                        one_char_token.title() in cls.ATOMS  # n, o, etc.;
+                        or one_char_token in cls.NON_ATOMS   # -, #, \., etc.;
+                        or one_char_token in cls.SPECIAL     # {, }, _, *.
+                ):
+                    token_list.append(one_char_token)
+                    char_no += 1
+                # If we didn't find any valid token, then return an empty list.
+                else:
+                    return []
 
         return token_list
 
