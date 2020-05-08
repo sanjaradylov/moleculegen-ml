@@ -17,7 +17,7 @@ from rdkit.RDLogger import DisableLog
 
 # Some useful constants to define file names.
 DATE = datetime.datetime.now().strftime('%m_%d_%H_%M')
-DIRECTORY = os.path.dirname(__file__)
+DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 DATA_DIRECTORY = os.path.join(os.path.dirname(DIRECTORY), 'data')
 OUT_FILENAME = os.path.join(DATA_DIRECTORY, f'stage1__{DATE}.csv')
 SQL_FILENAME = os.path.join(DATA_DIRECTORY, 'stage1_smiles.sql')

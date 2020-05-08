@@ -7,6 +7,7 @@ __maintainer__ = 'Sanjar Ad[iy]lov'
 __status__ = 'Development'
 __version__ = 'beta'
 
+from . import description
 
 from .base import Token
 from .data import (
@@ -29,16 +30,20 @@ from .vocab import (
 
 
 __all__ = [
-    'Token',
+    # Modules.
+    'description',
 
+    # Functions.
     'count_tokens',
     'get_mask_for_loss',
     'tokenize',
 
+    # Classes.
     'OneHotEncoder',
     'Perplexity',
     'SMILESDataLoader',
     'SMILESDataset',
     'SMILESRNNModel',
+    'Token',
     'Vocabulary',
 ]
