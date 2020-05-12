@@ -19,8 +19,8 @@ from rdkit.RDLogger import DisableLog
 DATE = datetime.datetime.now().strftime('%m_%d_%H_%M')
 DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 DATA_DIRECTORY = os.path.join(os.path.dirname(DIRECTORY), 'data')
-OUT_FILENAME = os.path.join(DATA_DIRECTORY, f'stage1__{DATE}.csv')
-SQL_FILENAME = os.path.join(DATA_DIRECTORY, 'stage1_smiles.sql')
+OUT_FILENAME = os.path.join(DATA_DIRECTORY, 'sets', f'stage1__{DATE}.csv')
+SQL_FILENAME = os.path.join(DATA_DIRECTORY, 'queries', 'stage1_smiles.sql')
 
 
 def main():

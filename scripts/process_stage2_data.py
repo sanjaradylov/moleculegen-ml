@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 Retrieve Stage 2 data w/ activity values.
 """
@@ -14,9 +16,9 @@ from typing import Dict, List, TextIO, Tuple, Union
 DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 DATA_DIRECTORY = os.path.join(os.path.dirname(DIRECTORY), 'data')
 OUT_FILENAME = os.path.join(
-    DATA_DIRECTORY, f'stage2_staphylococcus_aureus__unique.csv')
+    DATA_DIRECTORY, 'sets', 'stage2_staphylococcus_aureus__unique.csv')
 SQL_FILENAME = os.path.join(
-    DATA_DIRECTORY, 'stage2_staphylococcus_aureus.sql')
+    DATA_DIRECTORY, 'queries', 'stage2_staphylococcus_aureus.sql')
 
 
 def main():
@@ -128,4 +130,5 @@ def process_options() -> argparse.Namespace:
     return parser.parse_args()
 
 
-main()
+if __name__ == '__main__':
+    main()
