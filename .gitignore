@@ -4,3 +4,6 @@
 **/.ipynb_checkpoints/*
 data/sets/*.csv
 data/params/*
+/dist/
+/*.egg-info
+/*.egg
