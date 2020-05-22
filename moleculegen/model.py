@@ -193,10 +193,9 @@ class SMILESRNNModel(gluon.Block):
         """
         trainer = gluon.trainer.Trainer(self.collect_params(), optimizer_)
         loss_list: List[float] = []
+        batch_size = dataloader.batch_size
 
         for batch_no, batch in enumerate(dataloader, start=1):
-            curr_batch_size = batch.x.shape[0]
-
             # Every mini-batch entry is a substring of (padded) SMILES string.
             # If entries begin with beginning-of-SMILES token
             # `Token.BOS` (i.e. our model has not seen any part
@@ -204,7 +203,7 @@ class SMILESRNNModel(gluon.Block):
             # Otherwise, we keep the previous state list and detach it from
             # the computation graph.
             if batch.s:
-                states = self.begin_state(batch_size=curr_batch_size, ctx=ctx)
+                states = self.begin_state(batch_size=batch_size, ctx=ctx)
             else:
                 states = [state.detach() for state in states]
 
@@ -224,7 +223,7 @@ class SMILESRNNModel(gluon.Block):
                 loss = loss_fn(p_outputs, outputs, label_mask)
 
             loss.backward()
-            trainer.step(batch_size=curr_batch_size)
+            trainer.step(batch_size=batch_size)
 
             # Print mean mini-batch loss and generate SMILES.
             if (batch_no - 1) % verbose == 0:

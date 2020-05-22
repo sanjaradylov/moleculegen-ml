@@ -9,28 +9,34 @@ __author__ = 'Sanjar Ad[iy]lov'
 
 
 import argparse
+import contextlib
 import datetime
 import pathlib
-import statistics
 import time
 from typing import Any, Dict, IO, Optional, Union
 
-from mxnet import autograd, context, gluon, init, lr_scheduler, npx, optimizer
+from mxnet import context, gluon, init, lr_scheduler, npx, optimizer
 
 from moleculegen import (
-    Token,
-    get_mask_for_loss,
     OneHotEncoder,
     SMILESDataset,
     SMILESDataLoader,
     SMILESRNNModel,
+    Token,
 )
 
 
 # Some useful constants to define file names.
 DATE = datetime.datetime.now().strftime('%m_%d_%H_%M')
 DIRECTORY = pathlib.Path(__file__).resolve().parent
-PREDICTIONS_OUT_DEF = DIRECTORY / 'data' / f'{DATE}__predictions.csv'
+PREDICTIONS_OUT_DEF = DIRECTORY / 'data' / 'sets' / f'{DATE}.csv'
+
+# The set of prohibited tokens to filter out redundant compounds.
+PROHIBITED_TOKENS = frozenset(
+    [
+        'Sn', 'K', 'Al', 'Te', 'te', 'Li', 'As', 'Na', 'Se', 'se',
+    ]
+)
 
 
 def main():
@@ -93,11 +99,37 @@ def main():
         --help          Show this help message and exit.
         --version       Show version information.
     """
+
+    def has_prohibited_tokens(smiles: str) -> bool:
+        """Check if `smiles` has any prohibited token declared in
+        `PROHIBITED_TOKENS` constant.
+
+        Parameters
+        ----------
+        smiles : str
+            SMILES string.
+
+        Returns
+        -------
+        check : bool
+
+        Notes
+        -----
+        !!! Use tokenization on `smiles` if any prohibited token matches
+        subtokens from a valid token set (e.g. 'Fe' is valid, but 'F' isn't).
+        """
+        for token in PROHIBITED_TOKENS:
+            if token in smiles:
+                return True
+        return False
+
     # Process command line arguments.
     options = process_options()
 
     # Load raw SMILES data.
     dataset = SMILESDataset(filename=options.stage1_data)
+    # Remove the data containing prohibited tokens.
+    dataset = dataset.filter(lambda smiles: not has_prohibited_tokens(smiles))
 
     # Define data loader, which generates mini-batches for training.
     dataloader = SMILESDataLoader(
@@ -113,7 +145,11 @@ def main():
         num_layers=options.n_layers,
         dropout=0.2,
     )
-    dense_layer = gluon.nn.Dense(len(dataloader.vocab))
+    dense_layer = gluon.nn.Sequential()
+    dense_layer.add(
+        gluon.nn.Dropout(0.2),
+        gluon.nn.Dense(len(dataloader.vocab)),
+    )
     model = SMILESRNNModel(
         embedding_layer=embedding_layer,
         rnn_layer=rnn_layer,
@@ -122,12 +158,12 @@ def main():
 
     # Define learning rate scheduler.
     scheduler = lr_scheduler.FactorScheduler(
-        step=200,
-        factor=0.95,
-        stop_factor_lr=1e-7,
+        step=1000,
+        factor=0.99,
+        stop_factor_lr=1e-5,
         base_lr=options.learning_rate,
-        warmup_steps=2000,
-        warmup_begin_lr=1e-6,
+        warmup_steps=17000,
+        warmup_begin_lr=1e-5,
         warmup_mode='linear',
     )
 
@@ -226,104 +262,27 @@ def train(
         model.initialize(
             ctx=ctx,
             force_reinit=True,
-            init=init.Normal(sigma=0.1),
+            init=init.Xavier(rnd_type='gaussian', factor_type='avg'),
         )
 
-    # Define trainer.
-    trainer = gluon.Trainer(model.collect_params(), opt, optimizer_params)
+    optimizer_ = optimizer.create(opt, **optimizer_params)
 
-    # Define the list that stores the execution time per epoch.
-    time_list = []
+    try:
+        for epoch in range(1, n_epochs + 1):
+            if verbose > 0:
+                print(f'\nEpoch: {epoch:>3}\n')
 
-    for epoch in range(1, n_epochs + 1):
+            with time_it('Execution time'):
+                model.train(optimizer_, dataloader, loss_fn, ctx, verbose)
 
-        # (Optional) Begin timer.
-        start_time = None
+            # (Optional) Save model weights.
+            if model_params_out is not None:
+                if verbose > 0:
+                    print(f'\nSaving model weights to {model_params_out!r}.')
+                model.save_parameters(model_params_out)
+    except KeyboardInterrupt:
         if verbose > 0:
-            print(f'\nEpoch: {epoch:>3}\n')
-            start_time = time.time()
-
-        # Define a state list of the model.
-        states = None
-
-        # Define the list that stores loss per iteration.
-        loss_list = []
-
-        # Generate `Batch` instances for training.
-        for batch_no, batch in enumerate(dataloader, start=1):
-            curr_batch_size = batch.x.shape[0]
-
-            # Every mini-batch entry is a substring of (padded) SMILES string.
-            # If entries begin with beginning-of-SMILES token
-            # `Token.BOS` (i.e. our model has not seen any part
-            # of this mini-batch), then we initialize a new state list.
-            # Otherwise, we keep the previous state list and detach it from
-            # the computation graph.
-            if batch.s:
-                states = model.begin_state(batch_size=curr_batch_size, ctx=ctx)
-            else:
-                states = [state.detach() for state in states]
-
-            inputs = batch.x.as_in_context(ctx)
-            outputs = batch.y.T.reshape((-1,)).as_in_context(ctx)
-
-            with autograd.record():
-                # Run forward computation.
-                p_outputs, states = model(inputs, states)
-
-                # Get a label mask, which labels 1 for any valid token and 0
-                # for padding token `Token.PAD`.
-                label_mask = get_mask_for_loss(inputs.shape, batch.v_y)
-                label_mask = label_mask.T.reshape((-1,)).as_in_context(ctx)
-
-                # Compute loss using predictions, labels, and the label mask.
-                loss = loss_fn(p_outputs, outputs, label_mask)
-
-            loss.backward()
-            trainer.step(batch_size=curr_batch_size)
-
-            # (Optional) Print training statistics (batch).
-            if (batch_no - 1) % verbose == 0:
-                mean_loss = loss.mean().item()
-                loss_list.append(mean_loss)
-                print(
-                    f'Batch: {batch_no:>6}, '
-                    f'Loss: {mean_loss:>3.3f}'
-                )
-
-            # (Optional) Generate and print new molecules.
-            if (batch_no - 1) % predict_epoch == 0:
-                smiles = model.generate(
-                    dataloader.vocab,
-                    prefix=prefix,
-                    max_length=max_gen_length,
-                    ctx=ctx,
-                )
-                print(f'Molecule:\n    {smiles}')
-
-        # (Optional) Print training statistics (epoch).
-        if verbose > 0:
-            print(
-                f'\nMean loss: '
-                f'{statistics.mean(loss_list):.3f} '
-                f'(+/- {statistics.stdev(loss_list):.3f})'
-            )
-
-            seconds_left = time.time() - start_time
-            time_list.append(seconds_left)
-            exec_time = datetime.timedelta(seconds=seconds_left)
-            print(f'Execution time: {exec_time}')
-
-    # (Optional) Save model weights.
-    if model_params_out is not None:
-        if verbose > 0:
-            print(f'\nSaving model parameters to {model_params_out!r}.')
-        model.save_parameters(model_params_out)
-
-    # (Optional) Print total execution time.
-    if verbose > 0:
-        total_time = datetime.timedelta(seconds=sum(time_list))
-        print(f'\nTotal execution time: {total_time}.')
+            print('\nInterrupting script...')
 
     # (Optional) After full training process, generate new molecules.
     if n_predictions > 0:
@@ -332,19 +291,40 @@ def train(
                 f"\nGenerating novel molecules and saving results in "
                 f"'{predictions_out}'."
             )
-
         with open(predictions_out, 'w') as fh:
-            for _ in range(n_predictions):
-                smiles = model.generate(
-                    dataloader.vocab,
-                    prefix=prefix,
-                    max_length=max_gen_length,
-                    ctx=ctx,
-                )
-                fh.write(f'{smiles}\n')
+            with time_it('Execution time'):
+                for _ in range(n_predictions):
+                    smiles = model.generate(
+                        dataloader.vocab,
+                        prefix=prefix,
+                        max_length=max_gen_length,
+                        ctx=ctx,
+                    )
+                    fh.write(f'{smiles}\n')
 
     if verbose > 0:
         print('\nDone!\n')
+
+
+@contextlib.contextmanager
+def time_it(message: str = ''):
+    """Context manager that calculates the execution time.
+
+    Parameters
+    ----------
+    message : str
+        Log message to print prior to the execution time.
+    """
+    start_time = time.time()
+    try:
+        yield
+    finally:
+        seconds_left = time.time() - start_time
+        exec_time = datetime.timedelta(seconds=seconds_left)
+
+        if message:
+            message = f'{message}: '
+        print(f'{message}{exec_time}.')
 
 
 def process_options() -> argparse.Namespace:
