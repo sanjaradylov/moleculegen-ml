@@ -7,8 +7,6 @@ __maintainer__ = 'Sanjar Ad[iy]lov'
 __status__ = 'Development'
 __version__ = 'beta'
 
-from . import description
-
 from .base import Token
 from .data import (
     SMILESDataset,

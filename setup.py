@@ -19,7 +19,9 @@ setup(
         'Documentation': urljoin(PACKAGE_URL, 'wiki'),
         'Source Code': urljoin(PACKAGE_URL, 'tree/master/moleculegen'),
     },
-    packages=find_packages(exclude=['*tests']),
+    packages=[
+        'moleculegen',
+    ],
     include_package_data=False,
     install_requires=[
         'mxnet-cu101mkl',
