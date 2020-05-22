@@ -5,7 +5,7 @@ Package for generation of novel molecules using machine learning methods.
 __author__ = 'Sanjar Ad[iy]lov'
 __maintainer__ = 'Sanjar Ad[iy]lov'
 __status__ = 'Development'
-__version__ = 'beta'
+__version__ = '1.0.dev'
 
 from .base import Token
 from .data import (
@@ -28,9 +28,6 @@ from .vocab import (
 
 
 __all__ = [
-    # Modules.
-    'description',
-
     # Functions.
     'count_tokens',
     'get_mask_for_loss',
