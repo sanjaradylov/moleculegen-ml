@@ -3,16 +3,21 @@ Language models for generation of novel molecules.
 
 Classes
 -------
+OneHotEncoder
+    One-hot-encoder functor.
 SMILESRNNModel
     Recurrent neural network to encode-decode SMILES strings.
 """
 
+import statistics
 from functools import partial
 from typing import Any, Callable, List, Optional, Tuple, Union
 
-from mxnet import context, gluon, nd, np, npx
+from mxnet import autograd, context, gluon, nd, np, npx, optimizer
 
 from .base import Token
+from .data import SMILESDataLoader
+from .utils import get_mask_for_loss
 from .vocab import Vocabulary
 
 
@@ -161,6 +166,81 @@ class SMILESRNNModel(gluon.Block):
         outputs, state = self.rnn_layer(inputs_e, state)
         outputs = self.dense_layer(outputs.reshape((-1, outputs.shape[-1])))
         return outputs, state
+
+    def train(
+            self,
+            optimizer_: optimizer.Optimizer,
+            dataloader: SMILESDataLoader,
+            loss_fn: gluon.loss.SoftmaxCELoss(),
+            ctx: context.Context = context.cpu(),
+            verbose: int = 0,
+    ):
+        """Train the model on the data from `dataloader` using optimization
+        technique `optimizer_` minimizing `loss_fn`.
+
+        Parameters
+        ----------
+        optimizer_ : mxnet.optimizer.Optimizer
+            MXNet optimizer instance.
+        dataloader : SMILESDataLoader
+            SMILES data loader.
+        loss_fn : gluon.loss.Loss, default gluon.loss.SoftmaxCELoss()
+            Loss function.
+        ctx : mxnet.context.Context, default context.cpu(0)
+            CPU or GPU.
+        verbose : int, default 0
+            Print logs every `verbose` steps.
+        """
+        trainer = gluon.trainer.Trainer(self.collect_params(), optimizer_)
+        loss_list: List[float] = []
+
+        for batch_no, batch in enumerate(dataloader, start=1):
+            curr_batch_size = batch.x.shape[0]
+
+            # Every mini-batch entry is a substring of (padded) SMILES string.
+            # If entries begin with beginning-of-SMILES token
+            # `Token.BOS` (i.e. our model has not seen any part
+            # of this mini-batch), then we initialize a new state list.
+            # Otherwise, we keep the previous state list and detach it from
+            # the computation graph.
+            if batch.s:
+                states = self.begin_state(batch_size=curr_batch_size, ctx=ctx)
+            else:
+                states = [state.detach() for state in states]
+
+            inputs = batch.x.as_in_ctx(ctx)
+            outputs = batch.y.T.reshape((-1,)).as_in_ctx(ctx)
+
+            with autograd.record():
+                # Run forward computation.
+                p_outputs, states = self.forward(inputs, states)
+
+                # Get a label mask, which labels 1 for any valid token and 0
+                # for padding token `Token.PAD`.
+                label_mask = get_mask_for_loss(inputs.shape, batch.v_y)
+                label_mask = label_mask.T.reshape((-1,)).as_in_ctx(ctx)
+
+                # Compute loss using predictions, labels, and the label mask.
+                loss = loss_fn(p_outputs, outputs, label_mask)
+
+            loss.backward()
+            trainer.step(batch_size=curr_batch_size)
+
+            # Print mean mini-batch loss and generate SMILES.
+            if (batch_no - 1) % verbose == 0:
+                mean_loss = loss.mean().item()
+                loss_list.append(mean_loss)
+                print(f'Batch: {batch_no:>6}, Loss: {mean_loss:>3.3f}')
+
+                smiles = self.generate(dataloader.vocab, ctx=ctx)
+                print(f'Molecule: {smiles}')
+
+        if verbose > 0:
+            print(
+                f'\nMean loss: '
+                f'{statistics.mean(loss_list):.3f} '
+                f'(+/- {statistics.stdev(loss_list):.3f})'
+            )
 
     def generate(
             self,

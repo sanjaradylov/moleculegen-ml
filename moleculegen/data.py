@@ -173,7 +173,7 @@ class SMILESDataLoader:
 
     @property
     def n_batch(self) -> Optional[int]:
-        """Return the number of batches to sample. Calculated immediately
+        """Return the number of samples. Calculated immediately
         after the first iteration of sampling (`__iter__`).
 
         Returns
