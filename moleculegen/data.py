@@ -117,6 +117,7 @@ class SMILESDataLoader:
 
         self.batch_size = batch_size
         self.n_steps = n_steps
+        self._n_batch = None
 
     @property
     def vocab(self) -> Vocabulary:
@@ -170,6 +171,17 @@ class SMILESDataLoader:
         assert n_steps >= 1, 'Number of steps must be positive non-zero.'
         self.__n_steps = n_steps
 
+    @property
+    def n_batch(self) -> Optional[int]:
+        """Return the number of batches to sample. Calculated immediately
+        after the first iteration of sampling (`__iter__`).
+
+        Returns
+        -------
+        n_batch : int or None
+        """
+        return self._n_batch
+
     def sequential_sample(self) -> Iterator[Tuple[np.ndarray, np.ndarray]]:
         """Iterate over the samples of the corpus.
         Strategy: sequential partitioning.
@@ -217,8 +229,7 @@ class SMILESDataLoader:
         2. For every iteration, get batch of size `self.batch_size` and
            pad token lists to have equal dimensions.
         3. The modified batch is divided into mini-batches (input, output)
-           of size (`self.batch_size`, `self.n_steps`). Previous mini-batch
-           differs from the current in exactly one timestep.
+           of size (`self.batch_size`, `self.n_steps`).
 
         Yields
         ------
@@ -227,8 +238,12 @@ class SMILESDataLoader:
             valid lengths.
         """
         random.shuffle(self._vocab.corpus)
+        self._n_batch = (
+            len(self._vocab.corpus) // self.batch_size
+            * self.batch_size
+        )
 
-        for i_batch in range(0, len(self._vocab.corpus), self.batch_size):
+        for i_batch in range(0, self._n_batch, self.batch_size):
             curr_slice = slice(i_batch, i_batch + self.batch_size)
             batch = self._pad(self._vocab.corpus[curr_slice])
 

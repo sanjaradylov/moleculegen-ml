@@ -92,7 +92,8 @@ class Vocabulary:
         self._token_freqs: Dict[str, int] = dict(sorted(
             counter.items(), key=lambda c: c[1], reverse=True))
 
-        self._idx_to_token: List[str] = list(Token.SPECIAL)
+        # 'Unknown' token is not used in training/prediction.
+        self._idx_to_token: List[str] = list(Token.SPECIAL - {Token.UNK})
         self._token_to_idx: Dict[str, int] = {
             token: id_ for id_, token in enumerate(self._idx_to_token)
         }
@@ -128,7 +129,7 @@ class Vocabulary:
         KeyError
             When `tokens` are of unsupported type.
         """
-        unknown_idx = self._token_to_idx[Token.UNK]
+        unknown_idx = len(self)
 
         if isinstance(tokens, str):
             return self._token_to_idx.get(tokens, unknown_idx)
