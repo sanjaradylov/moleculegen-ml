@@ -27,4 +27,17 @@ DESCRIPTOR_FUNCTIONS = {
 
 def get_physchem_descriptors(compounds: MutableSequence[str]) \
         -> Dict[str, array.array]:
+    """Return physicochemical descriptors.
+
+    Parameters
+    ----------
+    compounds : mutable sequence of str
+        (Mutable) Sequence of SMILES strings.
+
+    Returns
+    -------
+    result : dict
+        A dictionary of descriptors, where keys are descriptor names and
+        values are the calculated descriptors.
+    """
     return get_descriptors(compounds, DESCRIPTOR_FUNCTIONS)
