@@ -195,6 +195,8 @@ class Corpus:
     ----------
     attribute_name : str
         The attribute name of the processed instance.
+
+    ??? It is not bound to Vocabulary anymore.
     """
 
     __slots__ = (

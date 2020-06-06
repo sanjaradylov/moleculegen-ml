@@ -41,12 +41,6 @@ class VocabTestCase(unittest.TestCase):
             sorted(set(self.vocab.token_freqs)),
         )
 
-    def test_all_tokens(self):
-        self.assertEqual(
-            len(self.vocab.all_tokens),
-            len(self.temp_file.smiles_strings.split('\n')),
-        )
-
     def test_corpus(self):
         # Original SMILES list without padded special tokens.
         smiles_list = self.temp_file.smiles_strings.split('\n')
