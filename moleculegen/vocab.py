@@ -3,8 +3,6 @@ Utilities to create corpus and vocabulary of SMILES documents.
 
 Classes
 -------
-Corpus
-    Descriptor that stores corpus of `Vocabulary` or similar instances.
 Vocabulary
     Mapping SMILES characters into their numerical representation.
 
@@ -18,12 +16,11 @@ tokenize
 
 import collections
 import itertools
-import warnings
 from typing import Counter, Dict, List, Optional, Sequence, Union
 
 from mxnet.gluon.data import SimpleDataset
 
-from .base import Corpus, Token
+from .base import Token
 
 
 class Vocabulary:
@@ -52,16 +49,11 @@ class Vocabulary:
         List of tokens.
     token_to_idx : dict
         Token-index mapping.
-    all_tokens : list
-        List of all tokens from original data set.
-        Accessible only if corpus is needed.
     token_freqs : dict
         The token-to-count mapping.
     corpus : list
         Original data set corpus. Accessible only if corpus is needed.
     """
-
-    corpus: List[List[int]] = Corpus('all_tokens')
 
     def __init__(
             self,
@@ -75,16 +67,8 @@ class Vocabulary:
         assert any(arg for arg in (dataset, tokens, counter)), \
             "At least one of `dataset`, `tokens`, `counter` must be specified."
 
-        self._need_corpus = need_corpus
-        if self._need_corpus:
-            self._all_tokens: List[List[str]] = (
-                tokens or [Token.tokenize(sample) for sample in dataset])
-        else:
-            self._all_tokens = None
-
         tokens: List[List[str]] = (
             tokens
-            or self._all_tokens
             or [Token.tokenize(sample) for sample in dataset]
         )
         counter: Counter[str] = counter or count_tokens(tokens)
@@ -100,6 +84,10 @@ class Vocabulary:
         for token in set(counter.keys()) - set(self._idx_to_token):
             self._idx_to_token.append(token)
             self._token_to_idx[token] = len(self._token_to_idx)
+
+        self._need_corpus = need_corpus
+        if self._need_corpus:
+            self._corpus: List[List[int]] = [self[line] for line in tokens]
 
     def __len__(self) -> int:
         """Return the number of unique tokens (SMILES characters).
@@ -145,6 +133,21 @@ class Vocabulary:
             )
 
     @property
+    def corpus(self) -> List[List[int]]:
+        """Original data set corpus. Accessible only if corpus is needed.
+
+        Returns
+        -------
+        corpus : list of list of int
+        """
+        if not self._need_corpus:
+            raise AttributeError(
+                'a corpus is loaded during initialization if parameter '
+                '`need_corpus`=True.'
+            )
+        return self._corpus
+
+    @property
     def idx_to_token(self) -> List[str]:
         """The list of unique tokens.
 
@@ -163,27 +166,6 @@ class Vocabulary:
         token_to_idx : dict
         """
         return self._token_to_idx
-
-    @property
-    def all_tokens(self) -> List[List[str]]:
-        """The original data set as list of tokens.
-
-        Returns
-        -------
-        all_tokens : list
-
-        Warns
-        -----
-        UserWarning
-            If self._need_corpus was set to False, which means that the tokens
-            were not saved. Refer to your `SMILESDataset` instance to load the
-            original set of tokens.
-        """
-        if not self._need_corpus:
-            warnings.warn(
-                "Tokens were not obtained from dataset; set need_corpus=True."
-            )
-        return self._all_tokens
 
     @property
     def token_freqs(self) -> Dict[str, int]:
