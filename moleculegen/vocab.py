@@ -16,7 +16,7 @@ tokenize
 
 import collections
 import itertools
-from typing import Counter, Dict, List, Optional, Sequence, Union
+from typing import Counter, Dict, Generator, List, Optional, Sequence, Union
 
 from mxnet.gluon.data import SimpleDataset
 
@@ -89,6 +89,24 @@ class Vocabulary:
         if self._need_corpus:
             self._corpus: List[List[int]] = [self[line] for line in tokens]
 
+    def __repr__(self) -> str:
+        tokens = ''
+        max_length = 60
+        current_length = 0
+
+        for token in self._token_to_idx:
+            token = f'{token!r}, '
+            current_length += len(token)
+            if current_length < max_length:
+                tokens += token
+
+        if current_length > max_length:
+            tokens += '...'
+        else:
+            tokens = tokens.rstrip(', ')
+
+        return f'{self.__class__.__name__}{{ {tokens} }}'
+
     def __len__(self) -> int:
         """Return the number of unique tokens (SMILES characters).
 
@@ -97,6 +115,28 @@ class Vocabulary:
         n : int
         """
         return len(self._idx_to_token)
+
+    def __contains__(self, token: str) -> bool:
+        """Check if `token` is in the vocabulary.
+
+        Parameters
+        ----------
+        token : str
+
+        Returns
+        -------
+        check : bool
+        """
+        return token in self._token_freqs
+
+    def __iter__(self) -> Generator[str, None, None]:
+        """Generate the tokens from the vocabulary.
+
+        Yields
+        ------
+        token : str
+        """
+        return (token for token in self._token_to_idx)
 
     def __getitem__(self, tokens: Union[str, Sequence[str]]) \
             -> Union[int, List[int]]:

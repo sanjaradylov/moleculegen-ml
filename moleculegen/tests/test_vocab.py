@@ -59,6 +59,16 @@ class VocabTestCase(unittest.TestCase):
             # Test token-to-id mapping.
             self.assertListEqual(idx, self.vocab[Token.tokenize(tokens)])
 
+    def test_contains(self):
+        self.assertNotIn(Token.UNK, self.vocab)
+
+        all_tokens = Token.get_all_tokens()
+
+        for token in self.vocab:
+            if len(token) == 1 and token.islower():
+                token = token.upper()
+            self.assertIn(token, all_tokens)
+
     def tearDown(self):
         self.fh.close()
 
