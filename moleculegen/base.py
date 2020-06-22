@@ -9,7 +9,7 @@ Corpus
     Descriptor that stores corpus of `Vocabulary` or similar instances.
 """
 
-from typing import Any, List, NamedTuple, Optional, Type
+from typing import Any, FrozenSet, List, NamedTuple, Optional, Type
 from mxnet import np
 
 
@@ -37,8 +37,12 @@ class Token:
     # Bonds, charges, etc.
     NON_ATOMS = frozenset([
         '-', '=', '#', ':', '(', ')', '%', '.', '[', ']', '@', '+', '-',
-        '[nH]', '1', '2', '3', '4', '5', '6', '7', '8', '9', '\\', '/',
-        '@@', '[C@H]', '[C@@H]',
+        '1', '2', '3', '4', '5', '6', '7', '8', '9', '\\', '/'
+    ])
+
+    # Subcompounds.
+    AGGREGATE = frozenset([
+        '[nH]', '[C@H]', '[C@@H]', '(=O)', '@@'
     ])
 
     # Special tokens not presented in the SMILES vocabulary.
@@ -47,6 +51,17 @@ class Token:
     PAD = '_'  # Padding.
     UNK = '*'  # Unknown.
     SPECIAL = frozenset(BOS + EOS + PAD + UNK)
+
+    @classmethod
+    def get_all_tokens(cls) -> FrozenSet[str]:
+        """Get a set of all the valid tokens defined in the class.
+
+        Returns
+        -------
+        tokens : frozenset of str
+        """
+        return cls.SPECIAL.union(
+            cls.AGGREGATE.union(cls.NON_ATOMS.union(cls.ATOMS)))
 
     @classmethod
     def augment(
@@ -128,9 +143,9 @@ class Token:
         char_no = 0  # Points to the current position.
         while char_no < len(smiles):
             # Check if tokens of length `n_chars` are in our `smiles`.
-            for n_chars in range(6, 1, -1):
+            for n_chars in range(max(map(len, cls.AGGREGATE)), 1, -1):
                 token = smiles[char_no:char_no + n_chars]
-                if token in cls.NON_ATOMS:
+                if token in cls.AGGREGATE:
                     token_list.append(token)
                     char_no += n_chars
                     break

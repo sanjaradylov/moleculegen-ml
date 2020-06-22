@@ -1,5 +1,5 @@
 """
-Utilities to create corpus and vocabulary of SMILES documents.
+Utilities to create vocabularies of SMILES documents.
 
 Classes
 -------
@@ -10,13 +10,12 @@ Functions
 ---------
 count_tokens
     Create token counter.
-tokenize
-    Tokenize documents.
 """
 
 import collections
 import itertools
-from typing import Counter, Dict, List, Optional, Sequence, Union
+import pickle
+from typing import Counter, Dict, Generator, List, Optional, Sequence, Union
 
 from mxnet.gluon.data import SimpleDataset
 
@@ -24,11 +23,11 @@ from .base import Token
 
 
 class Vocabulary:
-    """Dictionary to map SMILES characters into numerical representation.
-    Read strings from `dataset` and create token (character) counter,
-    or work directly with `tokens` and `counter` if at least the former is
-    specified. Eventually obtain unique SMILES characters and their frequencies
-    to create token-to-index and index-to-token variables.
+    """A dictionary to map SMILES characters into numerical representation.
+    Read SMILES strings from `dataset` and create a token counter,
+    or work directly with `tokens` if specified. Eventually obtain unique
+    SMILES tokens and their frequencies to create token-to-index and
+    index-to-token variables.
 
     Parameters
     ----------
@@ -36,12 +35,16 @@ class Vocabulary:
         SMILES data set.
     tokens : list, default None
         SMILES tokens.
-    counter : collections.Counter, default None
-        Token counter.
     need_corpus : bool, default False
         If True, property `corpus` is loaded from descriptor `Corpus`.
         To keep original data as tokens and load a corpus,
         pass non-empty `dataset` or `tokens`.
+    load_from_pickle : str, default None
+        If passed, load all the attributes from the file named
+        `load_from_pickle`.
+    save_to_pickle : str, default None
+        If passed, save all the attributes to the file named
+        `save_to_pickle`.
 
     Attributes
     ----------
@@ -59,44 +62,107 @@ class Vocabulary:
             self,
             dataset: Optional[SimpleDataset] = None,
             tokens: Optional[List[str]] = None,
-            counter: Optional[Counter[str]] = None,
             need_corpus: bool = False,
+            load_from_pickle: Optional[str] = None,
+            save_to_pickle: Optional[str] = None,
     ):
-        assert not (need_corpus and dataset is None and tokens is None), \
-            "If you wish to load corpus, specify the original data set."
-        assert any(arg for arg in (dataset, tokens, counter)), \
-            "At least one of `dataset`, `tokens`, `counter` must be specified."
+        self._corpus = None
 
-        tokens: List[List[str]] = (
-            tokens
-            or [Token.tokenize(sample) for sample in dataset]
-        )
-        counter: Counter[str] = counter or count_tokens(tokens)
+        if load_from_pickle is not None:
+            with open(load_from_pickle, 'rb') as fh:
+                data_map = pickle.load(fh)
+                self._token_freqs = data_map['token_freqs']
+                self._idx_to_token = data_map['idx_to_token']
+                self._token_to_idx = data_map['token_to_idx']
+                self._corpus = data_map['corpus']
 
-        self._token_freqs: Dict[str, int] = dict(sorted(
-            counter.items(), key=lambda c: c[1], reverse=True))
+        else:
+            if dataset is None and tokens is None:
+                raise ValueError(
+                    'At least one of the arguments `dataset` and `tokens` '
+                    'must be passed if `load_from_pickle` (a path to the '
+                    'pickled file with data) is empty.'
+                )
 
-        # 'Unknown' token is not used in training/prediction.
-        self._idx_to_token: List[str] = list(Token.SPECIAL - {Token.UNK})
-        self._token_to_idx: Dict[str, int] = {
-            token: id_ for id_, token in enumerate(self._idx_to_token)
-        }
-        for token in set(counter.keys()) - set(self._idx_to_token):
-            self._idx_to_token.append(token)
-            self._token_to_idx[token] = len(self._token_to_idx)
+            tokens: List[List[str]] = (
+                tokens
+                or [Token.tokenize(sample) for sample in dataset]
+            )
+            counter: Counter[str] = count_tokens(tokens)
 
-        self._need_corpus = need_corpus
-        if self._need_corpus:
-            self._corpus: List[List[int]] = [self[line] for line in tokens]
+            self._token_freqs: Dict[str, int] = dict(sorted(
+                counter.items(), key=lambda c: c[1], reverse=True))
+
+            # 'Unknown' token is not used in training/prediction.
+            self._idx_to_token: List[str] = list(Token.SPECIAL - {Token.UNK})
+            self._token_to_idx: Dict[str, int] = {
+                token: id_ for id_, token in enumerate(self._idx_to_token)
+            }
+            for token in set(counter.keys()) - set(self._idx_to_token):
+                self._idx_to_token.append(token)
+                self._token_to_idx[token] = len(self._token_to_idx)
+
+            if need_corpus:
+                self._corpus: List[List[int]] = [self[line] for line in tokens]
+
+        if save_to_pickle is not None:
+            with open(save_to_pickle, 'wb') as fh:
+                data_map = {
+                    'token_freqs': self._token_freqs,
+                    'idx_to_token': self._idx_to_token,
+                    'token_to_idx': self._token_to_idx,
+                    'corpus': self._corpus,
+                }
+                pickle.dump(data_map, fh, protocol=pickle.HIGHEST_PROTOCOL)
+
+    def __repr__(self) -> str:
+        tokens = ''
+        max_length = 60
+        current_length = 0
+
+        for token in self._token_to_idx:
+            token = f'{token!r}, '
+            current_length += len(token)
+            if current_length < max_length:
+                tokens += token
+
+        if current_length > max_length:
+            tokens += '...'
+        else:
+            tokens = tokens.rstrip(', ')
+
+        return f'{self.__class__.__name__}{{ {tokens} }}'
 
     def __len__(self) -> int:
-        """Return the number of unique tokens (SMILES characters).
+        """Return the number of unique tokens.
 
         Returns
         -------
         n : int
         """
         return len(self._idx_to_token)
+
+    def __contains__(self, token: str) -> bool:
+        """Check if `token` is in the vocabulary.
+
+        Parameters
+        ----------
+        token : str
+
+        Returns
+        -------
+        check : bool
+        """
+        return token in self._token_freqs
+
+    def __iter__(self) -> Generator[str, None, None]:
+        """Generate the tokens from the vocabulary.
+
+        Yields
+        ------
+        token : str
+        """
+        return (token for token in self._token_to_idx)
 
     def __getitem__(self, tokens: Union[str, Sequence[str]]) \
             -> Union[int, List[int]]:
@@ -134,16 +200,23 @@ class Vocabulary:
 
     @property
     def corpus(self) -> List[List[int]]:
-        """Original data set corpus. Accessible only if corpus is needed.
+        """The original data set corpus. Accessible only if corpus is needed.
 
         Returns
         -------
         corpus : list of list of int
+
+        Raises
+        ------
+        AttributeError
+            If initially `need_corpus` was set to False or `load_from_pickle`
+            didn't contain a non-empty corpus.
         """
-        if not self._need_corpus:
+        if self._corpus is None:
             raise AttributeError(
-                'a corpus is loaded during initialization if parameter '
-                '`need_corpus`=True.'
+                'a corpus is loaded during the initialization of an instance '
+                'if `need_corpus=True` or if the pickled file '
+                '`load_from_pickle`contains non-empty corpus data.'
             )
         return self._corpus
 
@@ -153,7 +226,7 @@ class Vocabulary:
 
         Returns
         -------
-        idx_to_token : list
+        idx_to_token : list of str
         """
         return self._idx_to_token
 
@@ -163,7 +236,7 @@ class Vocabulary:
 
         Returns
         -------
-        token_to_idx : dict
+        token_to_idx : dict, str -> int
         """
         return self._token_to_idx
 
@@ -173,16 +246,16 @@ class Vocabulary:
 
         Returns
         -------
-        token_freqs : dict
+        token_freqs : dict, str -> int
         """
         return self._token_freqs
 
     def get_tokens(self, indices: List[int]) -> List[str]:
-        """Return the tokens corresponding to the indices.
+        """Return the tokens corresponding to `indices`.
 
         Returns
         -------
-        tokens : list
+        tokens : list of str
         """
         return [self._idx_to_token[index] for index in indices]
 
@@ -203,19 +276,3 @@ def count_tokens(tokens: List[List[str]]) -> Counter[str]:
     tokens_flattened = itertools.chain(*tokens)
     tokens_counter = collections.Counter(tokens_flattened)
     return tokens_counter
-
-
-def tokenize(strings: List[str]) -> List[List[str]]:
-    """Split every SMILES string into characters to get tokens.
-
-    Parameters
-    ----------
-    strings : list
-        SMILES strings.
-
-    Returns
-    -------
-    strings : list
-        List of SMILES tokens.
-    """
-    return [list(s) for s in strings]

@@ -90,7 +90,7 @@ class TokenTestCase(unittest.TestCase):
             )
 
         # Only single-char tokens.
-        test(['C', 'n', '(', '=', 'O', ')'])
+        test(['C', 'n', '(', '=', 'N', ')'])
 
         # Single-char and double-char tokens.
         test(['O', '@', 'N', '2', 'Os', 'i', '[', 'Ni', ']'])
@@ -98,6 +98,9 @@ class TokenTestCase(unittest.TestCase):
         # Single-char and double-char tokens w/ two consecutive tokens
         # composing an atom (they should be divided into two separate tokens).
         test(['C', 'N', 'C', 'n', 'o', 'Cl', 'C', 'Cl', 'O'])
+
+        # Subcompound tokens.
+        test(['N', '[C@H]', '(', 'C', ')', 'C', '(=O)', 'O'])
 
 
 if __name__ == '__main__':
