@@ -25,7 +25,6 @@ from .utils import (
 from .vocab import (
     Vocabulary,
     count_tokens,
-    tokenize,
 )
 
 
@@ -36,7 +35,6 @@ __all__ = [
     # Functions.
     'count_tokens',
     'get_mask_for_loss',
-    'tokenize',
 
     # Classes.
     'OneHotEncoder',
