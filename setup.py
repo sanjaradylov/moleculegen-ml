@@ -12,7 +12,7 @@ PACKAGE_URL = 'http://github.com/sanjaradylov/moleculegen-ml/'
 setup(
     name='moleculegen',
     description='Generate novel molecules using recurrent neural networks',
-    version='1.0.dev',
+    version='1.0.dev1',
     author='Sanjar Ad[iy]lov',
     url=PACKAGE_URL,
     project_urls={
