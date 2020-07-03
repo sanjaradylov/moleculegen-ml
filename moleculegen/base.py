@@ -85,7 +85,18 @@ class Token:
         modified_smiles : str
             Modified SMILES string.
         """
-        return f'{cls.BOS}{cls.crop(smiles)}{cls.PAD * padding_len}{cls.EOS}'
+        modified_smiles = f'{Token.BOS}{smiles.lstrip(Token.BOS)}'
+        if not (
+                modified_smiles.endswith(Token.PAD)
+                or modified_smiles.endswith(Token.EOS)
+        ):
+            modified_smiles += Token.EOS
+        if padding_len > 0:
+            modified_smiles += cls.PAD * padding_len
+        if modified_smiles.endswith(Token.EOS):
+            modified_smiles = f'{modified_smiles.rstrip(Token.EOS)}{Token.EOS}'
+
+        return modified_smiles
 
     @classmethod
     def crop(
@@ -108,9 +119,12 @@ class Token:
         modified_smiles : str
             Modified SMILES string.
         """
-        modified_smiles = smiles.lstrip(cls.BOS).rstrip(cls.EOS)
+        modified_smiles = smiles.lstrip(cls.BOS)
         if padding:
             modified_smiles = modified_smiles.replace(cls.PAD, '')
+            modified_smiles = modified_smiles.rstrip(cls.EOS)
+        else:
+            modified_smiles = modified_smiles.replace(cls.EOS, '')
 
         return modified_smiles
 
