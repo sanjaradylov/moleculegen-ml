@@ -11,6 +11,7 @@ from . import description
 
 from .base import Token
 from .data import (
+    SMILESConsecutiveSampler,
     SMILESDataset,
     SMILESDataLoader,
 )
@@ -39,6 +40,7 @@ __all__ = [
     # Classes.
     'OneHotEncoder',
     'Perplexity',
+    'SMILESConsecutiveSampler',
     'SMILESDataLoader',
     'SMILESDataset',
     'SMILESRNNModel',

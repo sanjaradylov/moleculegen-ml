@@ -9,13 +9,13 @@ SMILESDataLoader
     Generate data samples from data set.
 """
 
+import dataclasses
 import io
 import random
-import warnings
-from typing import AnyStr, Iterator, List, Optional, Tuple
+from typing import AnyStr, Generator, Iterator, List, Optional, Tuple, Union
 
 from mxnet import np
-from mxnet.gluon.data import SimpleDataset
+from mxnet.gluon.data import Sampler, SimpleDataset
 
 from .base import Batch, Token
 from .vocab import Vocabulary
@@ -182,45 +182,6 @@ class SMILESDataLoader:
         """
         return self._n_batch
 
-    def sequential_sample(self) -> Iterator[Tuple[np.ndarray, np.ndarray]]:
-        """Iterate over the samples of the corpus.
-        Strategy: sequential partitioning.
-
-        Yields
-        ------
-        sample : tuple
-            inputs : mxnet.np.ndarray
-            outputs : mxnet.np.ndarray
-
-        Warns
-        -----
-        DeprecationWarning
-            For now, this sampling method is considered to be ineffective.
-        """
-        warnings.warn(
-            "This sampling method might be ineffective; try using iter.",
-            category=DeprecationWarning,
-        )
-
-        offset = np.random.randint(0, self.n_steps).asscalar()
-        n_idx = (
-            (
-                (len(self._vocab.corpus) - offset - 1)
-                // self.batch_size
-            )
-            * self.batch_size
-        )
-
-        inputs = np.array(self._vocab.corpus[offset:(offset+n_idx)])
-        inputs = inputs.reshape((self.batch_size, -1))
-        outputs = np.array(self._vocab.corpus[(offset+1):(offset+1+n_idx)])
-        outputs = outputs.reshape((self.batch_size, -1))
-
-        self.n_batches = inputs.shape[1] // self.n_steps
-        for i in range(0, self.n_batches * self.n_steps, self.n_steps):
-            yield inputs[:, i:i+self.n_steps], outputs[:, i:i+self.n_steps]
-
-    # TODO Still, revise sampling methods.
     def __iter__(self) -> Iterator[Batch]:
         """Iterate over the samples of the corpus.
 
@@ -339,3 +300,134 @@ class SMILESDataLoader:
             new_items_list.append(item_list + pad_list)
 
         return np.array(new_items_list, dtype=int)
+
+
+class SMILESConsecutiveSampler(Sampler):
+    """Consecutively generate SMILES (sub)sequences of length `n_steps`,
+    padding the lacking tokens if necessary. By default, the generated objects
+    are of type Sample, which has attributes `inputs` (input sequences),
+    `outputs` (output sequences shifted by one step), and `valid_length`
+    (the number of valid tokens in `outputs`).
+
+    This class generates only one sample at a time. To sample mini-batches,
+    refer to mxnet.gluon.data.BatchSampler.
+
+    Parameters
+    ----------
+    vocabulary : Vocabulary
+        The SMILES vocabulary containing the loaded corpus.
+    n_steps : int, default None
+        The length of a substring.
+        If None, it equals to the maximum string length in the corpus minus 1.
+    shuffle : bool, default True
+        Whether to shuffle the corpus before sampling.
+    sample_type : {'sample', 'tuple'}, default 'sample'
+        The type of an object being generated.
+        If 'sample', objects are of type SMILESConsecutiveSampler.Sample,
+        which has attributes `inputs` (input sequences), `outputs` (output
+        sequences shifted by one step), and `valid_length` (the number of
+        valid tokens in `outputs`).
+        If 'tuple', return a tuple comprising `inputs` and `outputs`, without
+        `valid_length`. This option is created for tensorflow.data.Dataset-
+        like API to create a dataset from this generator and fit a tf.keras
+        model.
+
+    Examples
+    --------
+    >>> from moleculegen import SMILESDataset, Vocabulary
+    >>> from moleculegen.tests.utils import TempSMILESFile
+    >>> smiles_string = 'CCc1c[n+]2ccc3c4ccccc4[nH]c3c2cc1'
+    >>> with TempSMILESFile(smiles_strings=smiles_string) as temp_fh:
+    ...     dataset = SMILESDataset(temp_fh.file_handler.name)
+    >>> vocabulary = Vocabulary(dataset, need_corpus=True)
+    >>> sampler = SMILESConsecutiveSampler(vocabulary, n_steps=20)
+    >>> len(sampler)
+    20
+    >>> for sample in sampler:
+    ...     print(''.join(vocabulary.get_tokens(sample.inputs)))
+    ...     print(''.join(vocabulary.get_tokens(sample.outputs)))
+    ...     print(sample.valid_length)
+    {CCc1c[n+]2ccc3c4ccc
+    CCc1c[n+]2ccc3c4cccc
+    20
+    cc4[nH]c3c2cc1}________
+    c4[nH]c3c2cc1}_________
+    11
+    """
+
+    @dataclasses.dataclass(eq=False, frozen=True)
+    class Sample:
+        inputs: List[int]   # Input tokens.
+        outputs: List[int]  # Output tokens.
+        valid_length: int  # The number of valid tokens in `outputs`.
+
+    def __init__(
+            self,
+            vocabulary: Vocabulary,
+            n_steps: Optional[int] = None,
+            shuffle: bool = True,
+            *,
+            sample_type: str = 'sample',
+    ):
+        self._vocabulary = vocabulary
+        self._shuffle = shuffle
+        self._n_steps = n_steps or max(map(len, self._vocabulary.corpus))
+
+        if sample_type == 'sample':
+            self._sample_type = lambda inputs, outputs, valid_length: \
+                self.Sample(inputs, outputs, valid_length)
+        elif sample_type == 'tuple':
+            self._sample_type = lambda inputs, outputs, ignore: \
+                tuple((inputs, outputs))
+        else:
+            raise ValueError(
+                f"`sample_type` must be either 'sample' or 'tuple'."
+            )
+
+    def __len__(self) -> int:
+        """Return the sequence length.
+        """
+        return self._n_steps
+
+    def __iter__(self) -> Generator[
+            Union[Sample, Tuple[List[int], List[int]]], None, None]:
+        """Generate samples of type SMILESConsecutiveSampler.Sample or tuple
+        (depending on the formal parameter `sample_type`) comprising input
+        sequences, output sequences, and (optionally) valid lengths.
+
+        Yields
+        ------
+        sample : SMILESConsecutiveSampler.Sample or tuple of list of int
+            Input-output sequences.
+        """
+        if self._shuffle:
+            random.shuffle(self._vocabulary.corpus)
+
+        # Iterate over the corpus of SMILES token indices.
+        for tokens in self._vocabulary.corpus:
+            step_i = 0  # Starting index of a subsequence.
+            step_len = step_i + self._n_steps  # Ending index.
+
+            # Iterate over subsequences of length `self._n_steps`.
+            # Discard the last subsequence if its length < `self._n_steps`.
+            while step_len + 1 <= len(tokens):
+                yield self._sample_type(
+                    tokens[step_i: step_len],
+                    tokens[step_i+1: step_len+1],
+                    self._n_steps,
+                )
+
+                step_i += self._n_steps
+                step_len += self._n_steps
+
+            # If the last subsequence is of length < `self._n_steps`,
+            remainder_len = step_len - len(tokens) + 1
+            if remainder_len > 0 and remainder_len != self._n_steps:
+                # fill the lacking tokens with Token.PAD index.
+                pad = [self._vocabulary[Token.PAD]]
+
+                yield self._sample_type(
+                    tokens[step_i: step_len] + pad*(remainder_len-1),
+                    tokens[step_i+1: step_len+1] + pad*remainder_len,
+                    self._n_steps - remainder_len,
+                )
