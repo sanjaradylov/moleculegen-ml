@@ -1,5 +1,5 @@
 """
-Test `SMILESDataset` and `SMILESDataLoader` classes and their components.
+Test `SMILESDataset` and `SMILESBatchColumnSampler` classes and their components.
 """
 
 import unittest
@@ -7,7 +7,7 @@ import unittest
 from moleculegen import (
     SMILESConsecutiveSampler,
     SMILESDataset,
-    SMILESDataLoader,
+    SMILESBatchColumnSampler,
     Token,
     Vocabulary,
 )
@@ -44,14 +44,20 @@ class DataTestCase(unittest.TestCase):
         self.fh.close()
 
 
-class DataLoaderTestCase(unittest.TestCase):
+class SMILESBatchColumnSamplerTestCase(unittest.TestCase):
     def setUp(self):
         self.temp_file = TempSMILESFile(
             tempfile_kwargs={'prefix': 'dataloader'})
         self.fh = self.temp_file.open()
 
         dataset = SMILESDataset(self.fh.name)
-        self.dataloader = SMILESDataLoader(2, 4, dataset)
+        vocabulary = Vocabulary(dataset=dataset, need_corpus=True)
+        self.dataloader = SMILESBatchColumnSampler(
+            vocabulary=vocabulary,
+            batch_size=2,
+            n_steps=4,
+            shuffle=True,
+        )
 
     def test_iter(self):
         sample_size = (self.dataloader.batch_size, self.dataloader.n_steps)
@@ -59,7 +65,6 @@ class DataLoaderTestCase(unittest.TestCase):
         for batch in self.dataloader:
             self.assertEqual(batch.x.shape, sample_size)
             self.assertEqual(batch.y.shape, sample_size)
-            self.assertEqual(batch.v_x.size, self.dataloader.batch_size)
             self.assertEqual(batch.v_y.size, self.dataloader.batch_size)
 
     def tearDown(self):

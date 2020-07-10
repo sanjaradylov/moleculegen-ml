@@ -203,8 +203,6 @@ class Batch(NamedTuple):
         Input sample.
     y : mxnet.np.ndarray
         Output sample.
-    v_x : mxnet.np.ndarray
-        Valid lengths for input sample.
     v_y : mxnet.np.ndarray
         Valid lengths for output sample.
     s : bool
@@ -212,7 +210,6 @@ class Batch(NamedTuple):
     """
     x: np.ndarray
     y: np.ndarray
-    v_x: np.ndarray
     v_y: np.ndarray
     s: bool
 

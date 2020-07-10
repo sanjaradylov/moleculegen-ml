@@ -5,8 +5,10 @@ Classes
 -------
 SMILESDataset
     Load text data set containing SMILES strings.
-SMILESDataLoader
-    Generate data samples from data set.
+SMILESBatchColumnSampler
+    Generate batches of SMILES subsequences.
+SMILESConsecutiveSampler
+    Generate samples of SMILES subsequences.
 """
 
 import dataclasses
@@ -87,47 +89,124 @@ class SMILESDataset(SimpleDataset):
         return smiles_strings
 
 
-class SMILESDataLoader:
-    """Iterator to load SMILES strings.
+class SMILESBatchColumnSampler:
+    """Generate batches of SMILES subsequences. Collect SMILES sequences of
+    size `batch_size`, divide them into mini-batches of shape
+    (`batch_size`, `n_steps`), and generate them successively. The generated
+    objects are of type `Batch`.
 
     Parameters
     ----------
+    vocabulary : Vocabulary
+        The vocabulary of the original data corpus.
     batch_size : int
-        Number of samples to generate.
+        The number of samples to generate.
     n_steps : int
-        Number of (time) steps.
-    dataset : SMILESDataset, default None
-        Data set containing SMILES strings.
-        Either `dataset` or `vocab` must be specified.
-    vocab : Vocabulary, default None
-        Vocabulary instance of original data.
-        Either `dataset` or `vocab` must be specified.
+        The number of (time) steps.
+    shuffle : bool, default True
+        Whether to shuffle the corpus before sampling.
+
+    Attributes
+    ----------
+    vocabulary : Vocabulary
+    batch_size : int
+    n_steps : int
+
+    Examples
+    --------
+    >>> from moleculegen import SMILESDataset, Vocabulary
+    >>> from moleculegen.tests.utils import TempSMILESFile
+    >>> smiles_strings = (
+    'CN=C=O\n'
+    'CCc1c[n+]2ccc3c4ccccc4[nH]c3c2cc1\n'
+    'OCCc1c(C)[n+](cs1)Cc2cnc(C)nc2N\n'
+    'CC(=O)NCCC1=CNc2c1cc(OC)cc2'
+    )
+    >>> with TempSMILESFile(smiles_strings=smiles_strings) as temp_fh:
+    ...     dataset = SMILESDataset(temp_fh.file_handler.name)
+    >>> vocabulary = Vocabulary(dataset, need_corpus=True)
+    >>> sampler = SMILESBatchColumnSampler(vocabulary, 2, 20, shuffle=False)
+    >>> print('Input batch samples:')
+    >>> for i, batch in enumerate(sampler, start=1):
+    ...     print(f'Batch #{i}')
+    ...     for sample in batch.x:
+    ...         print(''.join(vocabulary.get_tokens(sample.tolist())))
+    Input batch samples:
+    Batch #1
+    {CN=C=O}____________
+    {CCc1c[n+]2ccc3c4ccc
+    Batch #2
+    ____________________
+    cc4[nH]c3c2cc1}________
+    Batch #3
+    {OCCc1c(C)[n+](cs1)C
+    {CC(=O)NCCC1=CNc2c1cc(O
+    Batch #4
+    c2cnc(C)nc2N}_______
+    C)cc2}______________
+    >>> print('Output batch samples:')
+    >>> for i, batch in enumerate(sampler, start=1):
+    ...     print(f'Batch #{i}')
+    ...     for sample in batch.y:
+    ...         print(''.join(vocabulary.get_tokens(sample.tolist())))
+    Output batch samples:
+    Batch #1
+    CN=C=O}_____________
+    CCc1c[n+]2ccc3c4cccc
+    Batch #2
+    ____________________
+    c4[nH]c3c2cc1}_________
+    Batch #3
+    OCCc1c(C)[n+](cs1)Cc
+    CC(=O)NCCC1=CNc2c1cc(OC
+    Batch #4
+    2cnc(C)nc2N}________
+    )cc2}_______________
+    >>> print('Valid lengths')
+    >>> for i, batch in enumerate(sampler, start=1):
+    ...     print(f'Batch #{i}')
+    ...     print(batch.v_y)
+    Batch #1
+    [7 20]
+    Batch #2
+    [0 11]
+    Batch #3
+    [20 20]
+    Batch #4
+    [12 5]
+
+    Notes
+    -----
+    This method is different from SMILESConsecutiveSampler followed by
+    mxnet.gluon.data.BatchSampler. See docs or examples for more information.
+
+    See also
+    --------
+    SMILESConsecutiveSampler
     """
 
     def __init__(
             self,
+            vocabulary: Vocabulary,
             batch_size: int,
             n_steps: int,
-            dataset: Optional[SMILESDataset] = None,
-            vocab: Optional[Vocabulary] = None,
+            shuffle: bool = True,
     ):
-        assert dataset or vocab, 'Pass either `dataset` or `vocab`.'
-
-        self._vocab = vocab or Vocabulary(dataset=dataset, need_corpus=True)
+        self._vocabulary = vocabulary
+        self._shuffle = shuffle
 
         self.batch_size = batch_size
         self.n_steps = n_steps
-        self._n_batch = None
 
     @property
-    def vocab(self) -> Vocabulary:
+    def vocabulary(self) -> Vocabulary:
         """The corpus of the original data set.
 
         Returns
         -------
-        vocab : Vocabulary
+        vocabulary : Vocabulary
         """
-        return self._vocab
+        return self._vocabulary
 
     @property
     def batch_size(self) -> int:
@@ -147,7 +226,9 @@ class SMILESDataLoader:
         ----------
         batch_size : int
         """
-        assert batch_size >= 1, 'Batch size must be positive non-zero.'
+        if not isinstance(batch_size, int) or batch_size < 1:
+            raise ValueError('Batch size must be positive non-zero.')
+
         self.__batch_size = batch_size
 
     @property
@@ -168,21 +249,12 @@ class SMILESDataLoader:
         ----------
         n_steps : int
         """
-        assert n_steps >= 1, 'Number of steps must be positive non-zero.'
+        if not isinstance(n_steps, int) or n_steps < 1:
+            raise ValueError('Number of steps must be positive non-zero.')
+
         self.__n_steps = n_steps
 
-    @property
-    def n_batch(self) -> Optional[int]:
-        """Return the number of samples. Calculated immediately
-        after the first iteration of sampling (`__iter__`).
-
-        Returns
-        -------
-        n_batch : int or None
-        """
-        return self._n_batch
-
-    def __iter__(self) -> Iterator[Batch]:
+    def __iter__(self) -> Generator[Batch, None, None]:
         """Iterate over the samples of the corpus.
 
         Strategy:
@@ -198,19 +270,21 @@ class SMILESDataLoader:
             Mini-batch containing inputs, outputs, and their corresponding
             valid lengths.
         """
-        random.shuffle(self._vocab.corpus)
-        self._n_batch = (
-            len(self._vocab.corpus) // self.batch_size
+        if self._shuffle:
+            random.shuffle(self._vocabulary.corpus)
+
+        n_batches = (
+            len(self._vocabulary.corpus) // self.batch_size
             * self.batch_size
         )
 
-        for i_batch in range(0, self._n_batch, self.batch_size):
+        for i_batch in range(0, n_batches, self.batch_size):
             curr_slice = slice(i_batch, i_batch + self.batch_size)
-            batch = self._pad(self._vocab.corpus[curr_slice])
+            batch = self._pad(self._vocabulary.corpus[curr_slice])
 
             yield from self._iter_steps(batch)
 
-    def _iter_steps(self, batch: np.ndarray) -> Iterator[Batch]:
+    def _iter_steps(self, batch: np.ndarray) -> Generator[Batch, None, None]:
         """Generate batches separated by time steps.
 
         Parameters
@@ -244,7 +318,7 @@ class SMILESDataLoader:
             # FIXME Iterating over matrix is somewhat brute and ineffective.
             for seq in sample:
                 for i, s in enumerate(seq):
-                    if s == self._vocab.token_to_idx[Token.PAD]:
+                    if s == self._vocabulary.token_to_idx[Token.PAD]:
                         lengths.append(i)
                         break
                 else:
@@ -259,7 +333,7 @@ class SMILESDataLoader:
             step_slice = (..., slice(i_step, i_step + self.n_steps))
             x, y = inputs[step_slice], outputs[step_slice]
 
-            yield Batch(x, y, get_valid_lengths(x), get_valid_lengths(y), h)
+            yield Batch(x, y, get_valid_lengths(y), h)
 
             h = False
 
@@ -291,7 +365,7 @@ class SMILESDataLoader:
         # (batch[:, :-1], batch[:, 1:]).
         max_len += 1
 
-        pad_token_idx = self._vocab.token_to_idx[Token.PAD]
+        pad_token_idx = self._vocabulary.token_to_idx[Token.PAD]
         new_items_list: List[List[int]] = []
 
         for item_list in item_lists:

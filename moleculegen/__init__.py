@@ -13,7 +13,7 @@ from .base import Token
 from .data import (
     SMILESConsecutiveSampler,
     SMILESDataset,
-    SMILESDataLoader,
+    SMILESBatchColumnSampler,
 )
 from .model import (
     OneHotEncoder,
@@ -41,7 +41,7 @@ __all__ = [
     'OneHotEncoder',
     'Perplexity',
     'SMILESConsecutiveSampler',
-    'SMILESDataLoader',
+    'SMILESBatchColumnSampler',
     'SMILESDataset',
     'SMILESRNNModel',
     'Token',
