@@ -505,3 +505,10 @@ class SMILESConsecutiveSampler(Sampler):
                     tokens[step_i+1: step_len+1] + pad*remainder_len,
                     self._n_steps - remainder_len,
                 )
+
+    def __call__(self) -> Iterator[Union[Sample, Tuple[List[int], List[int]]]]:
+        """Return a sampler iterator.
+        No need to use this syntactic sugar explicitly w/ mxnet API. Created
+        only for tensorflow's Dataset or similar APIs.
+        """
+        return iter(self)

@@ -94,7 +94,7 @@ class Vocabulary:
                 counter.items(), key=lambda c: c[1], reverse=True))
 
             # 'Unknown' token is not used in training/prediction.
-            self._idx_to_token: List[str] = list(Token.SPECIAL - {Token.UNK})
+            self._idx_to_token: List[str] = [Token.PAD, Token.BOS, Token.EOS]
             self._token_to_idx: Dict[str, int] = {
                 token: id_ for id_, token in enumerate(self._idx_to_token)
             }
