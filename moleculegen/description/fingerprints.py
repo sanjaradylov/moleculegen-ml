@@ -1,6 +1,17 @@
 """
 Fingerprint transformers.
+
+Classes
+-------
+MorganFingerprint
+    Apply the Morgan algorithm to a set of compounds to get circular
+    fingerprints.
 """
+
+__all__ = (
+    'MorganFingerprint',
+)
+
 
 from typing import MutableSequence, Union
 
@@ -50,8 +61,8 @@ class MorganFingerprint(BaseEstimator, TransformerMixin):
         y_ignored : None
             This formal parameter will be ignored.
         """
-        check_scalar(self.radius, 'radius', int, 1)
-        check_scalar(self.n_bits, 'number of bits', int, 1)
+        check_scalar(self.radius, 'radius', int, min_val=1)
+        check_scalar(self.n_bits, 'number of bits', int, min_val=1)
 
         return self
 

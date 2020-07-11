@@ -7,43 +7,23 @@ __maintainer__ = 'Sanjar Ad[iy]lov'
 __status__ = 'Development'
 __version__ = 'beta'
 
-from . import description
-
-from .base import Token
-from .data import (
-    SMILESConsecutiveSampler,
-    SMILESDataset,
-    SMILESBatchColumnSampler,
-)
-from .model import (
-    OneHotEncoder,
-    SMILESRNNModel,
-)
-from .utils import (
-    Perplexity,
-    get_mask_for_loss,
-)
-from .vocab import (
-    Vocabulary,
-    count_tokens,
-)
-
-
-__all__ = [
+__all__ = (
     # Modules.
+    'data',
     'description',
-
-    # Functions.
-    'count_tokens',
-    'get_mask_for_loss',
+    'evaluation',
 
     # Classes.
-    'OneHotEncoder',
-    'Perplexity',
-    'SMILESConsecutiveSampler',
-    'SMILESBatchColumnSampler',
-    'SMILESDataset',
     'SMILESRNNModel',
     'Token',
-    'Vocabulary',
-]
+)
+
+
+from . import data
+from . import description
+from . import evaluation
+
+from .base import Token
+from .model import (
+    SMILESRNNModel,
+)

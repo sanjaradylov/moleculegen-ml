@@ -1,6 +1,16 @@
 """
 Create physicochemical descriptors.
+
+Functions
+---------
+get_physchem_descriptors
+    Create physicochemical descriptors.
 """
+
+__all__ = (
+    'get_physchem_descriptors',
+)
+
 
 import array
 from typing import Dict, MutableSequence

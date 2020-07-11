@@ -1,20 +1,21 @@
 """
-Test `SMILESDataset` and `SMILESBatchColumnSampler` classes and their components.
+Test `SMILESDataset` and `SMILESBatchColumnSampler` classes and their
+components.
 """
 
 import unittest
 
-from moleculegen import (
+from moleculegen import Token
+from moleculegen.data import (
+    SMILESBatchColumnSampler,
     SMILESConsecutiveSampler,
     SMILESDataset,
-    SMILESBatchColumnSampler,
-    Token,
-    Vocabulary,
+    SMILESVocabulary,
 )
 from moleculegen.tests.utils import TempSMILESFile
 
 
-class DataTestCase(unittest.TestCase):
+class SMILESDatasetTestCase(unittest.TestCase):
     def setUp(self):
         self.temp_file = TempSMILESFile(tempfile_kwargs={'prefix': 'dataset'})
         self.fh = self.temp_file.open()
@@ -51,7 +52,7 @@ class SMILESBatchColumnSamplerTestCase(unittest.TestCase):
         self.fh = self.temp_file.open()
 
         dataset = SMILESDataset(self.fh.name)
-        vocabulary = Vocabulary(dataset=dataset, need_corpus=True)
+        vocabulary = SMILESVocabulary(dataset=dataset, need_corpus=True)
         self.dataloader = SMILESBatchColumnSampler(
             vocabulary=vocabulary,
             batch_size=2,
@@ -76,7 +77,7 @@ class SMILESConsecutiveSamplerTestCase(unittest.TestCase):
         self.smiles_string = 'CCc1c[n+]2ccc3c4ccccc4[nH]c3c2cc1'
         with TempSMILESFile(smiles_strings=self.smiles_string) as temp_fh:
             dataset = SMILESDataset(temp_fh.file_handler.name)
-        self.vocabulary = Vocabulary(dataset, need_corpus=True)
+        self.vocabulary = SMILESVocabulary(dataset, need_corpus=True)
 
     def test_sampling_with_padding(self):
         smiles_string = Token.tokenize(Token.augment(self.smiles_string))
@@ -123,6 +124,69 @@ class SMILESConsecutiveSamplerTestCase(unittest.TestCase):
             step_i += n_steps
 
         self.assertEqual(n_samples, 1)
+
+
+class SMILESVocabularyTestCase(unittest.TestCase):
+    def setUp(self):
+        self.temp_file = TempSMILESFile()
+        self.fh = self.temp_file.open()
+
+        # See `test_data.py` for data set test cases.
+        self.dataset = SMILESDataset(self.fh.name)
+        self.vocab = SMILESVocabulary(self.dataset, need_corpus=True)
+
+    def test_tokens_and_idx(self):
+        self.assertSequenceEqual(
+            # Tokenize the entire dataset to get a set of unique tokens.
+            sorted(
+                set(
+                    Token.tokenize(
+                        self.temp_file.smiles_strings.replace('\n', '')
+                    )
+                )
+            ),
+            # The temporary file is not augmented by the special tokens.
+            sorted(set(self.vocab.token_to_idx) - Token.SPECIAL),
+        )
+        self.assertSequenceEqual(
+            sorted(
+                set(self.vocab.token_to_idx)
+                # Pad and unknown tokens does not appear in the original set.
+                - {Token.PAD, Token.UNK}
+            ),
+            sorted(set(self.vocab.token_freqs)),
+        )
+
+    def test_corpus(self):
+        # Original SMILES list without padded special tokens.
+        smiles_list = self.temp_file.smiles_strings.split('\n')
+
+        self.assertEqual(len(self.vocab.corpus), len(smiles_list))
+
+        for idx, tokens in zip(self.vocab.corpus, smiles_list):
+            # Add special tokens in order to correspond to the loaded corpus
+            # for data sampling and model fitting.
+            tokens = Token.augment(tokens)
+            # Test id-to-token mapping.
+            self.assertEqual(
+                ''.join(self.vocab.get_tokens(idx)),
+                tokens,
+            )
+            # Test token-to-id mapping.
+            self.assertListEqual(idx, self.vocab[Token.tokenize(tokens)])
+
+    def test_contains(self):
+        self.assertNotIn(Token.UNK, self.vocab)
+
+        all_tokens = Token.get_all_tokens()
+
+        for token in self.vocab:
+            if len(token) == 1 and token.islower():
+                token = token.upper()
+            self.assertIn(token, all_tokens)
+
+    def tearDown(self):
+        self.fh.close()
 
 
 if __name__ == '__main__':

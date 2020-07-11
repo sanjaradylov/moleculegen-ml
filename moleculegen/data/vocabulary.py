@@ -3,14 +3,20 @@ Utilities to create vocabularies of SMILES documents.
 
 Classes
 -------
-Vocabulary
-    Mapping SMILES characters into their numerical representation.
+SMILESVocabulary
+    Map SMILES characters into their numerical representation.
 
 Functions
 ---------
 count_tokens
     Create token counter.
 """
+
+__all__ = (
+    'count_tokens',
+    'SMILESVocabulary',
+)
+
 
 import collections
 import itertools
@@ -19,10 +25,10 @@ from typing import Counter, Dict, Generator, List, Optional, Sequence, Union
 
 from mxnet.gluon.data import SimpleDataset
 
-from .base import Token
+from moleculegen.base import Token
 
 
-class Vocabulary:
+class SMILESVocabulary:
     """A dictionary to map SMILES characters into numerical representation.
     Read SMILES strings from `dataset` and create a token counter,
     or work directly with `tokens` if specified. Eventually obtain unique

@@ -4,9 +4,9 @@ Base objects for all modules.
 Classes
 -------
 Token
-    Token enumeration containing possible tokens from SMILES Vocabulary.
+    Token enumeration containing possible tokens from SMILESVocabulary.
 Corpus
-    Descriptor that stores corpus of `Vocabulary` or similar instances.
+    Descriptor that stores corpus of SMILESVocabulary or similar instances.
 """
 
 from typing import Any, FrozenSet, List, NamedTuple, Optional, Type
@@ -215,14 +215,14 @@ class Batch(NamedTuple):
 
 
 class Corpus:
-    """Descriptor that stores corpus of `Vocabulary` or similar instances.
+    """Descriptor that stores corpus of `SMILESVocabulary` or similar instances.
 
     Parameters
     ----------
     attribute_name : str
         The attribute name of the processed instance.
 
-    ??? It is not bound to Vocabulary anymore.
+    ??? It is not bound to SMILESVocabulary anymore.
     """
 
     __slots__ = (
@@ -238,7 +238,7 @@ class Corpus:
             instance: Any,
             owner: Optional[Type] = None,
     ) -> List[List[int]]:
-        """Obtain a corpus from instance (e.g. all tokens from `Vocabulary`).
+        """Obtain a corpus from instance (e.g. all tokens from `SMILESVocabulary`).
 
         Returns
         -------

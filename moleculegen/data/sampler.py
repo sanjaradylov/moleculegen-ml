@@ -1,92 +1,29 @@
 """
-Utilities to load SMILES data sets.
+Utilities to sample single instances or batches of SMILES subsequences.
 
 Classes
 -------
-SMILESDataset
-    Load text data set containing SMILES strings.
 SMILESBatchColumnSampler
     Generate batches of SMILES subsequences.
 SMILESConsecutiveSampler
     Generate samples of SMILES subsequences.
 """
 
+__all__ = (
+    'SMILESBatchColumnSampler',
+    'SMILESConsecutiveSampler',
+)
+
+
 import dataclasses
-import io
 import random
-from typing import AnyStr, Generator, Iterator, List, Optional, Tuple, Union
+from typing import List, Optional, Generator, Union, Tuple, Iterator
 
 from mxnet import np
-from mxnet.gluon.data import Sampler, SimpleDataset
+from mxnet.gluon.data import Sampler
 
-from .base import Batch, Token
-from .vocab import Vocabulary
-
-
-class SMILESDataset(SimpleDataset):
-    """Text data set comprising SMILES strings. Every line is presented as
-    a SMILES string.
-
-    Parameters
-    ----------
-    filename : str
-        Path to the text file.
-    encoding : {'ascii', 'utf8'}, default 'ascii'
-        File encoding format.
-    """
-
-    def __init__(
-            self,
-            filename: AnyStr,
-            encoding: str = 'ascii',
-    ):
-        self.__filename = filename
-        self.__encoding = encoding
-
-        smiles_strings = self._read()
-        super().__init__(smiles_strings)
-
-    @property
-    def filename(self):
-        """The filename of the data set to read.
-
-        Returns
-        -------
-        filename : str
-        """
-        return self.__filename
-
-    @property
-    def encoding(self):
-        """The file encoding format.
-
-        Returns
-        -------
-        encoding : {'ascii', 'utf8'}
-        """
-        return self.__encoding
-
-    def _read(self) -> List[str]:
-        """Read SMILES strings from the specified filename.
-
-        Returns
-        -------
-        smiles_strings : list
-            Non-empty SMILES strings.
-        """
-        smiles_strings: List[str] = []
-
-        with io.open(self.__filename, encoding=self.__encoding) as fh:
-            for line in fh:
-                if not line:
-                    continue
-
-                # Add beginning-of-SMILES and end-of-SMILES tokens to prepare
-                # the data for sampling and fitting.
-                smiles = Token.augment(line.strip())
-                smiles_strings.append(smiles)
-
-        return smiles_strings
+from ..base import Batch, Token
+from .vocabulary import SMILESVocabulary
 
 
 class SMILESBatchColumnSampler:
@@ -97,7 +34,7 @@ class SMILESBatchColumnSampler:
 
     Parameters
     ----------
-    vocabulary : Vocabulary
+    vocabulary : SMILESVocabulary
         The vocabulary of the original data corpus.
     batch_size : int
         The number of samples to generate.
@@ -108,13 +45,13 @@ class SMILESBatchColumnSampler:
 
     Attributes
     ----------
-    vocabulary : Vocabulary
+    vocabulary : SMILESVocabulary
     batch_size : int
     n_steps : int
 
     Examples
     --------
-    >>> from moleculegen import SMILESDataset, Vocabulary
+    >>> from moleculegen.data import SMILESDataset, SMILESVocabulary
     >>> from moleculegen.tests.utils import TempSMILESFile
     >>> smiles_strings = (
     'CN=C=O\n'
@@ -124,7 +61,7 @@ class SMILESBatchColumnSampler:
     )
     >>> with TempSMILESFile(smiles_strings=smiles_strings) as temp_fh:
     ...     dataset = SMILESDataset(temp_fh.file_handler.name)
-    >>> vocabulary = Vocabulary(dataset, need_corpus=True)
+    >>> vocabulary = SMILESVocabulary(dataset, need_corpus=True)
     >>> sampler = SMILESBatchColumnSampler(vocabulary, 2, 20, shuffle=False)
     >>> print('Input batch samples:')
     >>> for i, batch in enumerate(sampler, start=1):
@@ -187,7 +124,7 @@ class SMILESBatchColumnSampler:
 
     def __init__(
             self,
-            vocabulary: Vocabulary,
+            vocabulary: SMILESVocabulary,
             batch_size: int,
             n_steps: int,
             shuffle: bool = True,
@@ -199,12 +136,12 @@ class SMILESBatchColumnSampler:
         self.n_steps = n_steps
 
     @property
-    def vocabulary(self) -> Vocabulary:
+    def vocabulary(self) -> SMILESVocabulary:
         """The corpus of the original data set.
 
         Returns
         -------
-        vocabulary : Vocabulary
+        vocabulary : SMILESVocabulary
         """
         return self._vocabulary
 
@@ -388,7 +325,7 @@ class SMILESConsecutiveSampler(Sampler):
 
     Parameters
     ----------
-    vocabulary : Vocabulary
+    vocabulary : SMILESVocabulary
         The SMILES vocabulary containing the loaded corpus.
     n_steps : int, default None
         The length of a substring.
@@ -408,12 +345,12 @@ class SMILESConsecutiveSampler(Sampler):
 
     Examples
     --------
-    >>> from moleculegen import SMILESDataset, Vocabulary
+    >>> from moleculegen.data import SMILESDataset, SMILESVocabulary
     >>> from moleculegen.tests.utils import TempSMILESFile
     >>> smiles_string = 'CCc1c[n+]2ccc3c4ccccc4[nH]c3c2cc1'
     >>> with TempSMILESFile(smiles_strings=smiles_string) as temp_fh:
     ...     dataset = SMILESDataset(temp_fh.file_handler.name)
-    >>> vocabulary = Vocabulary(dataset, need_corpus=True)
+    >>> vocabulary = SMILESVocabulary(dataset, need_corpus=True)
     >>> sampler = SMILESConsecutiveSampler(vocabulary, n_steps=20)
     >>> len(sampler)
     20
@@ -437,7 +374,7 @@ class SMILESConsecutiveSampler(Sampler):
 
     def __init__(
             self,
-            vocabulary: Vocabulary,
+            vocabulary: SMILESVocabulary,
             n_steps: Optional[int] = None,
             shuffle: bool = True,
             *,

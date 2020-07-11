@@ -6,7 +6,8 @@ import unittest
 
 from mxnet import gluon, np, npx
 
-from moleculegen.model import OneHotEncoder, SMILESRNNModel
+from moleculegen.description import OneHotEncoder
+from moleculegen.model import SMILESRNNModel
 
 
 class SMILESRNNModelTestCase(unittest.TestCase):
