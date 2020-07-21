@@ -3,10 +3,12 @@ Load data from files, create vocabularies, generate mini-batch samplers.
 
 Classes
 -------
+SMILESBatchSampler
+    Generate batches of SMILES sequences using specified sampler.
 SMILESBatchColumnSampler
-    Generate batches of SMILES subsequences.
+    Generate batches of SMILES subsequences "column-wise".
 SMILESConsecutiveSampler
-    Generate samples of SMILES subsequences.
+    Generate samples of SMILES subsequences "consecutively".
 
 SMILESDataset
     Load text data set containing SMILES strings.
@@ -23,6 +25,7 @@ count_tokens
 
 __all__ = (
     'count_tokens',
+    'SMILESBatchSampler',
     'SMILESBatchColumnSampler',
     'SMILESConsecutiveSampler',
     'SMILESDataset',
@@ -34,6 +37,7 @@ from .loader import (
     SMILESDataset,
 )
 from .sampler import (
+    SMILESBatchSampler,
     SMILESBatchColumnSampler,
     SMILESConsecutiveSampler,
 )
