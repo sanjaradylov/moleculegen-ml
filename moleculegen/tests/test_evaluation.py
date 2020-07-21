@@ -7,6 +7,7 @@ import unittest
 from mxnet import np, npx
 
 from moleculegen.evaluation import (
+    get_mask_for_loss,
     MaskedSoftmaxCELoss,
     Perplexity,
 )
@@ -32,6 +33,19 @@ class MaskedSoftmaxCELossTestCase(unittest.TestCase):
         loss = loss_fn(predictions, labels, valid_lengths)
 
         self.assertTrue(all(x > y for x, y in zip(loss[:-1], loss[1:])))
+
+    def test_get_mask_for_loss(self):
+        output_shape = (4, 8)
+        valid_lengths = np.array([8, 7, 6, 4])
+        label_mask = get_mask_for_loss(output_shape, valid_lengths)
+
+        self.assertTupleEqual(label_mask.shape, output_shape + (1,))
+        self.assertTrue(all(
+            a == b for a, b in zip(
+                label_mask.sum(axis=1).squeeze(),
+                valid_lengths
+            )
+        ))
 
 
 class PerplexityTestCase(unittest.TestCase):

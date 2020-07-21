@@ -42,9 +42,8 @@ class SMILESVocabulary:
     tokens : list, default None
         SMILES tokens.
     need_corpus : bool, default False
-        If True, property `corpus` is loaded from descriptor `Corpus`.
-        To keep original data as tokens and load a corpus,
-        pass non-empty `dataset` or `tokens`.
+        If True, load `corpus`property of token IDs for every SMILES sequence.
+        Pass non-empty `dataset` or `tokens`.
     load_from_pickle : str, default None
         If passed, load all the attributes from the file named
         `load_from_pickle`.

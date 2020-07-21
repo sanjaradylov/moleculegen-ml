@@ -15,15 +15,18 @@ import pathlib
 import time
 from typing import Any, Dict, IO, Optional, Union
 
-from mxnet import context, gluon, init, lr_scheduler, npx, optimizer
+from mxnet import context, gluon, init, npx, optimizer
 
 from moleculegen import (
-    OneHotEncoder,
-    SMILESDataset,
-    SMILESDataLoader,
     SMILESRNNModel,
     Token,
 )
+from moleculegen.data import (
+    SMILESDataset,
+    SMILESBatchColumnSampler,
+    SMILESVocabulary,
+)
+from moleculegen.description import OneHotEncoder
 
 
 # Some useful constants to define file names.
@@ -131,47 +134,33 @@ def main():
     # Remove the data containing prohibited tokens.
     dataset = dataset.filter(lambda smiles: not has_prohibited_tokens(smiles))
 
+    vocabulary = SMILESVocabulary(dataset, need_corpus=True)
+
     # Define data loader, which generates mini-batches for training.
-    dataloader = SMILESDataLoader(
+    batch_sampler = SMILESBatchColumnSampler(
+        vocabulary,
         batch_size=options.batch_size,
         n_steps=options.n_steps,
-        dataset=dataset,
     )
 
     # Define model architecture.
-    embedding_layer = OneHotEncoder(len(dataloader.vocab))
+    embedding_layer = OneHotEncoder(len(vocabulary))
     rnn_layer = gluon.rnn.LSTM(
         hidden_size=options.hidden_size,
         num_layers=options.n_layers,
         dropout=0.2,
     )
-    dense_layer = gluon.nn.Sequential()
-    dense_layer.add(
-        gluon.nn.Dropout(0.2),
-        gluon.nn.Dense(len(dataloader.vocab)),
-    )
+    dense_layer = gluon.nn.Dense(len(vocabulary), flatten=True)
     model = SMILESRNNModel(
         embedding_layer=embedding_layer,
         rnn_layer=rnn_layer,
         dense_layer=dense_layer,
     )
 
-    # Define learning rate scheduler.
-    scheduler = lr_scheduler.FactorScheduler(
-        step=1000,
-        factor=0.99,
-        stop_factor_lr=1e-5,
-        base_lr=options.learning_rate,
-        warmup_steps=17000,
-        warmup_begin_lr=1e-5,
-        warmup_mode='linear',
-    )
-
     # Define (hyper)parameters for model training.
     optimizer_params = {
-        'lr_scheduler': scheduler,
         'learning_rate': options.learning_rate,
-        'clip_gradient': options.grad_clip_length,
+        # 'clip_gradient': options.grad_clip_length,
     }
 
     # Use CPU or GPU.
@@ -182,7 +171,7 @@ def main():
 
     # Begin fitting the model and generating novel molecules.
     train(
-        dataloader=dataloader,
+        batch_sampler=batch_sampler,
         model=model,
         optimizer_params=optimizer_params,
         n_epochs=options.n_epochs,
@@ -199,7 +188,7 @@ def main():
 
 
 def train(
-        dataloader: SMILESDataLoader,
+        batch_sampler: SMILESBatchColumnSampler,
         model: SMILESRNNModel,
         optimizer_params: Dict[str, Any],
         opt: Union[str, optimizer.Optimizer] = 'adam',
@@ -218,11 +207,11 @@ def train(
         n_predictions: int = 0,
         predictions_out: Union[IO, str] = PREDICTIONS_OUT_DEF,
 ):
-    """Fit `model` with data from `dataloader`.
+    """Fit `model` with data from `batch_sampler`.
 
     Parameters
     ----------
-    dataloader : SMILESDataLoader
+    batch_sampler : SMILESDataLoader
         SMILES data loader.
     model : SMILESRNNModel
         Language model to fit.
@@ -273,7 +262,7 @@ def train(
                 print(f'\nEpoch: {epoch:>3}\n')
 
             with time_it('Execution time'):
-                model.train(optimizer_, dataloader, loss_fn, ctx, verbose)
+                model.train(optimizer_, batch_sampler, loss_fn, ctx, verbose)
 
             # (Optional) Save model weights.
             if model_params_out is not None:
@@ -295,7 +284,7 @@ def train(
             with time_it('Execution time'):
                 for _ in range(n_predictions):
                     smiles = model.generate(
-                        dataloader.vocab,
+                        batch_sampler.vocabulary,
                         prefix=prefix,
                         max_length=max_gen_length,
                         ctx=ctx,

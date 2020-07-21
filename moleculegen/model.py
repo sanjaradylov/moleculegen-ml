@@ -16,9 +16,10 @@ from typing import Any, Callable, List, Optional, Tuple, Union
 from mxnet import autograd, context, gluon, nd, np, npx, optimizer
 
 from .base import Token
-from .data import SMILESDataLoader
-from .utils import get_mask_for_loss
-from .vocab import Vocabulary
+from .data.sampler import SMILESBatchColumnSampler
+from .data.vocabulary import SMILESVocabulary
+from .description.common import OneHotEncoder
+from .evaluation.loss import get_mask_for_loss
 
 
 def _distribution_partial(
@@ -51,32 +52,6 @@ def _distribution_partial(
         raise ValueError('`shape` parameter should be not be specified.')
 
     return partial(distribution, **distribution_args)
-
-
-class OneHotEncoder:
-    """One-hot encoder class. It is implemented as a functor for more
-    convenience, to pass it as a detached embedding layer.
-
-    Parameters
-    ----------
-    depth : int
-        The depth of one-hot encoding.
-    """
-
-    def __init__(self, depth: int):
-        self.depth = depth
-
-    def __call__(self, indices: np.ndarray, *args, **kwargs) -> np.ndarray:
-        """Return one-hot encoded tensor.
-
-        Parameters
-        ----------
-        indices : np.ndarray
-            The indices (categories) to encode.
-        *args, **kwargs
-            Additional arguments for `nd.one_hot`.
-        """
-        return npx.one_hot(indices, self.depth, *args, **kwargs)
 
 
 class SMILESRNNModel(gluon.Block):
@@ -170,7 +145,7 @@ class SMILESRNNModel(gluon.Block):
     def train(
             self,
             optimizer_: optimizer.Optimizer,
-            dataloader: SMILESDataLoader,
+            dataloader: SMILESBatchColumnSampler,
             loss_fn: gluon.loss.SoftmaxCELoss(),
             ctx: context.Context = context.cpu(),
             verbose: int = 0,
@@ -208,7 +183,8 @@ class SMILESRNNModel(gluon.Block):
                 states = [state.detach() for state in states]
 
             inputs = batch.x.as_in_ctx(ctx)
-            outputs = batch.y.T.reshape((-1,)).as_in_ctx(ctx)
+            outputs = batch.y.T.reshape(-1).as_in_ctx(ctx)
+            valid_lengths = batch.v_y.as_in_ctx(ctx)
 
             with autograd.record():
                 # Run forward computation.
@@ -216,14 +192,17 @@ class SMILESRNNModel(gluon.Block):
 
                 # Get a label mask, which labels 1 for any valid token and 0
                 # for padding token `Token.PAD`.
-                label_mask = get_mask_for_loss(inputs.shape, batch.v_y)
-                label_mask = label_mask.T.reshape((-1,)).as_in_ctx(ctx)
+                label_mask = get_mask_for_loss(inputs.shape, valid_lengths)
+                label_mask = label_mask.T.reshape(-1,)
 
                 # Compute loss using predictions, labels, and the label mask.
                 loss = loss_fn(p_outputs, outputs, label_mask)
 
+            n_tokens = valid_lengths.sum().item()
+            if n_tokens == 0:
+                continue
             loss.backward()
-            trainer.step(batch_size=batch_size)
+            trainer.step(n_tokens)
 
             # Print mean mini-batch loss and generate SMILES.
             if (batch_no - 1) % verbose == 0:
@@ -231,7 +210,7 @@ class SMILESRNNModel(gluon.Block):
                 loss_list.append(mean_loss)
                 print(f'Batch: {batch_no:>6}, Loss: {mean_loss:>3.3f}')
 
-                smiles = self.generate(dataloader.vocab, ctx=ctx)
+                smiles = self.generate(dataloader.vocabulary, ctx=ctx)
                 print(f'Molecule: {smiles}')
 
         if verbose > 0:
@@ -243,7 +222,7 @@ class SMILESRNNModel(gluon.Block):
 
     def generate(
             self,
-            vocabulary: Vocabulary,
+            vocabulary: SMILESVocabulary,
             prefix: str = Token.BOS,
             max_length: int = 100,
             ctx: context.Context = context.cpu(),
@@ -282,6 +261,7 @@ class SMILESRNNModel(gluon.Block):
             input_ = np.array(vocabulary[smiles[-1]], ctx=ctx).reshape(1, 1)
             output, state = self.forward(input_, state)
 
+            # noinspection PyUnresolvedReferences
             token_id = npx.softmax(output).argmax().astype(np.int32).item()
             token = vocabulary.idx_to_token[token_id]
             if token in (Token.EOS, Token.PAD):
