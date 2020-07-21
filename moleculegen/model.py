@@ -198,11 +198,8 @@ class SMILESRNNModel(gluon.Block):
                 # Compute loss using predictions, labels, and the label mask.
                 loss = loss_fn(p_outputs, outputs, label_mask)
 
-            n_tokens = valid_lengths.sum().item()
-            if n_tokens == 0:
-                continue
             loss.backward()
-            trainer.step(n_tokens)
+            trainer.step(valid_lengths.sum())
 
             # Print mean mini-batch loss and generate SMILES.
             if (batch_no - 1) % verbose == 0:

@@ -255,13 +255,15 @@ class SMILESBatchColumnSampler:
             # FIXME Iterating over matrix is somewhat brute and ineffective.
             for seq in sample:
                 for i, s in enumerate(seq):
-                    if s == self._vocabulary.token_to_idx[Token.PAD]:
+                    if s == pad_token_idx:
                         lengths.append(i)
                         break
                 else:
                     lengths.append(sample.shape[1])
 
             return np.array(lengths, dtype=int)
+
+        pad_token_idx: int = self._vocabulary[Token.PAD]
 
         inputs, outputs = batch[:, :-1], batch[:, 1:]
 
@@ -270,7 +272,12 @@ class SMILESBatchColumnSampler:
             step_slice = (..., slice(i_step, i_step + self.n_steps))
             x, y = inputs[step_slice], outputs[step_slice]
 
-            yield Batch(x, y, get_valid_lengths(y), h)
+            # If every token in an output batch is PAD, ignore this sample.
+            v_y = get_valid_lengths(y)
+            if v_y.sum().item() == 0:
+                continue
+
+            yield Batch(x, y, v_y, h)
 
             h = False
 
@@ -302,7 +309,7 @@ class SMILESBatchColumnSampler:
         # (batch[:, :-1], batch[:, 1:]).
         max_len += 1
 
-        pad_token_idx = self._vocabulary.token_to_idx[Token.PAD]
+        pad_token_idx: int = self._vocabulary[Token.PAD]
         new_items_list: List[List[int]] = []
 
         for item_list in item_lists:
