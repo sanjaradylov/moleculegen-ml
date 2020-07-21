@@ -3,12 +3,23 @@ Base objects for all modules.
 
 Classes
 -------
+StateInitializerMixin
+    A mixin class for specific state initialization techniques during
+    model training.
 Token
-    Token enumeration containing possible tokens from SMILESVocabulary.
+    A token enumeration, which stores a diverse set of atomic, bond, and
+    composite tokens.
 """
 
-from typing import FrozenSet, List, NamedTuple, Optional
-from mxnet import np
+__all__ = (
+    'StateInitializerMixin',
+    'Token',
+)
+
+
+import functools
+from typing import Any, Callable, FrozenSet, List, Optional
+from mxnet import context, nd, np
 
 
 class Token:
@@ -67,7 +78,7 @@ class Token:
             smiles: str,
             padding_len: int = 0,
     ) -> str:
-        """Prepend Beginnig-of-SMILES token and append End-of-SMILES token
+        """Prepend Beginning-of-SMILES token and append End-of-SMILES token
         to the specified SMILES string `smiles`. If specified, append Padding
         token `padding_len` times.
 
@@ -102,8 +113,8 @@ class Token:
             smiles: str,
             padding: bool = False,
     ) -> str:
-        """Remove Beginnig-of-SMILES, End-of-SMILES, and, if specified, Padding
-        tokens from `smiles`.
+        """Remove Beginning-of-SMILES, End-of-SMILES, and, if specified,
+        Padding tokens from `smiles`.
 
         Parameters
         ----------
@@ -192,21 +203,107 @@ class Token:
         return token_list
 
 
-class Batch(NamedTuple):
-    """Named tuple that stores mini-batch items.
+class StateInitializerMixin:
+    """A mixin class for specific state initialization techniques during
+    model training.
 
-    Attributes
-    ----------
-    x : mxnet.np.ndarray
-        Input sample.
-    y : mxnet.np.ndarray
-        Output sample.
-    v_y : mxnet.np.ndarray
-        Valid lengths for output sample.
-    s : bool
-        Whether to (re-)initialize state or not.
+    The main purpose is to provide additional API for batch samplers that
+    encourage nontrivial ways of state (re-)initialization during training.
+    For example, while sampling a mini-batch from SMILESBatchColumnSampler,
+    one should reinitialize states when finally all the samples from the
+    mini-batch encounter Token.EOS.
     """
-    x: np.ndarray
-    y: np.ndarray
-    v_y: np.ndarray
-    s: bool
+
+    @classmethod
+    def init_states(
+            cls,
+            model: Any,
+            mini_batch: Any,
+            states: Optional[List[np.ndarray]] = None,
+            init_state_func: Optional[
+                Callable[[Any], nd.ndarray.NDArray]] = None,
+            ctx: context.Context = context.cpu(),
+            *args,
+            **kwargs,
+    ) -> List[np.ndarray]:
+        """(Re-)initialize the hidden state(s) of `model`.
+
+        Parameters
+        ----------
+        model : any
+            A Gluon model.
+        mini_batch : any
+            A (mini-)batch instance. Basically, tuples or dataclasses.
+        states : list of mxnet.nd.ndarray.NDArray, default None
+            The previous hidden states of `model`.
+            If None, then a new state list will be initialized.
+        init_state_func : callable, any -> mxnet.nd.ndarray.NDArray,
+                default None
+            A distribution function to initialize `states`.
+            If None, the previous states will be returned.
+            Recommended to use `StateInitializerMixin.init_state_func` method
+            to declare this callable.
+        ctx : mxnet.context.Context, default mxnet.context.cpu()
+            CPU or GPU.
+
+        Returns
+        -------
+        states : list of mxnet.np.ndarray
+            A state list.
+
+        Raises
+        ------
+        AttributeError
+            If `mini_batch` does not have `shape` attribute.
+            If `model` does not implement `begin_state` method.
+        """
+        if not hasattr(mini_batch, 'shape'):
+            raise AttributeError(
+                '`mini_batch` must store `shape` attribute.'
+            )
+        if not hasattr(model, 'begin_state'):
+            raise AttributeError(
+                '`model` must implement `begin_state` method.'
+            )
+
+        if states is None:
+            states = model.begin_state(
+                batch_size=mini_batch.shape[0],
+                ctx=ctx,
+                func=init_state_func,
+            )
+
+        return states
+
+    @staticmethod
+    def init_state_func(
+            func: Callable[[Any], nd.ndarray.NDArray] = nd.zeros,
+            **func_kwargs,
+    ) -> Callable[[Any], nd.ndarray.NDArray]:
+        """Return distribution callable `func` with arbitrary
+        (non-default) arguments `func_kwargs` specified in advance. Use
+        primarily for state initialization.
+
+        Parameters
+        ----------
+        func : callable, any -> mxnet.nd.ndarray.NDArray
+            One of the distribution functions from mxnet.nd.random or
+            functions like nd.zeros.
+        func_kwargs : dict, default None
+            Parameters of `func` excluding `shape`.
+
+        Returns
+        -------
+        func : callable
+            Partial function callable.
+
+        Raises
+        ------
+        ValueError
+            If `shape` parameter is included in `distribution_args`.
+            This parameter will be used separately in state initialization.
+        """
+        if 'shape' in func_kwargs:
+            raise ValueError('`shape` parameter should be not be specified.')
+
+        return functools.partial(func, **func_kwargs)

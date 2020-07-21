@@ -168,40 +168,36 @@ class SMILESRNNModel(gluon.Block):
         """
         trainer = gluon.trainer.Trainer(self.collect_params(), optimizer_)
         loss_list: List[float] = []
-        batch_size = dataloader.batch_size
+        init_state_func: Callable = dataloader.init_state_func()
+        states: Optional[List[np.ndarray]] = None
 
         for batch_no, batch in enumerate(dataloader, start=1):
-            # Every mini-batch entry is a substring of (padded) SMILES string.
-            # If entries begin with beginning-of-SMILES token
-            # `Token.BOS` (i.e. our model has not seen any part
-            # of this mini-batch), then we initialize a new state list.
-            # Otherwise, we keep the previous state list and detach it from
-            # the computation graph.
-            if batch.s:
-                states = self.begin_state(batch_size=batch_size, ctx=ctx)
-            else:
-                states = [state.detach() for state in states]
+            states = dataloader.init_states(
+                model=self,
+                mini_batch=batch,
+                states=states,
+                init_state_func=init_state_func,
+                ctx=ctx,
+                detach=True,
+            )
 
-            inputs = batch.x.as_in_ctx(ctx)
-            outputs = batch.y.T.reshape(-1).as_in_ctx(ctx)
-            valid_lengths = batch.v_y.as_in_ctx(ctx)
+            inputs = batch.inputs.as_in_ctx(ctx)
+            outputs = batch.outputs.T.reshape(-1).as_in_ctx(ctx)
+            valid_lengths = batch.valid_lengths.as_in_ctx(ctx)
 
             with autograd.record():
-                # Run forward computation.
                 p_outputs, states = self.forward(inputs, states)
 
                 # Get a label mask, which labels 1 for any valid token and 0
                 # for padding token `Token.PAD`.
                 label_mask = get_mask_for_loss(inputs.shape, valid_lengths)
-                label_mask = label_mask.T.reshape(-1,)
+                label_mask = label_mask.T.reshape(-1)
 
-                # Compute loss using predictions, labels, and the label mask.
                 loss = loss_fn(p_outputs, outputs, label_mask)
 
             loss.backward()
             trainer.step(valid_lengths.sum())
 
-            # Print mean mini-batch loss and generate SMILES.
             if (batch_no - 1) % verbose == 0:
                 mean_loss = loss.mean().item()
                 loss_list.append(mean_loss)

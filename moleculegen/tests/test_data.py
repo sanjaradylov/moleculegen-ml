@@ -64,9 +64,10 @@ class SMILESBatchColumnSamplerTestCase(unittest.TestCase):
         sample_size = (self.dataloader.batch_size, self.dataloader.n_steps)
 
         for batch in self.dataloader:
-            self.assertEqual(batch.x.shape, sample_size)
-            self.assertEqual(batch.y.shape, sample_size)
-            self.assertEqual(batch.v_y.size, self.dataloader.batch_size)
+            self.assertEqual(batch.inputs.shape, sample_size)
+            self.assertEqual(batch.outputs.shape, sample_size)
+            self.assertEqual(
+                batch.valid_lengths.size, self.dataloader.batch_size)
 
     def tearDown(self):
         self.fh.close()
