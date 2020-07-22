@@ -3,80 +3,20 @@ Language models for generation of novel molecules.
 
 Classes
 -------
-OneHotEncoder
-    One-hot-encoder functor.
 SMILESRNNModel
     Recurrent neural network to encode-decode SMILES strings.
 """
 
 import statistics
-from functools import partial
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 from mxnet import autograd, context, gluon, nd, np, npx, optimizer
 
 from .base import Token
-from .data import SMILESDataLoader
-from .utils import get_mask_for_loss
-from .vocab import Vocabulary
-
-
-def _distribution_partial(
-        distribution: Callable,
-        **distribution_args: Any,
-) -> Callable:
-    """Return distribution callable `distribution` with arbitrary
-    (non-default) arguments `distribution_args` specified in advance. Use
-    primarily for state initialization.
-
-    Parameters
-    ----------
-    distribution : callable
-        One of the distribution functions from mxnet.nd.random.
-    distribution_args : dict, default None
-        Parameters of mxnet.nd.random.uniform excluding `shape`.
-
-    Returns
-    -------
-    func : callable
-        Partial distribution callable.
-
-    Raises
-    ------
-    ValueError
-        If `shape` parameter is included in `distribution_args`.
-        This parameter will be used separately in state initialization.
-    """
-    if 'shape' in distribution_args:
-        raise ValueError('`shape` parameter should be not be specified.')
-
-    return partial(distribution, **distribution_args)
-
-
-class OneHotEncoder:
-    """One-hot encoder class. It is implemented as a functor for more
-    convenience, to pass it as a detached embedding layer.
-
-    Parameters
-    ----------
-    depth : int
-        The depth of one-hot encoding.
-    """
-
-    def __init__(self, depth: int):
-        self.depth = depth
-
-    def __call__(self, indices: np.ndarray, *args, **kwargs) -> np.ndarray:
-        """Return one-hot encoded tensor.
-
-        Parameters
-        ----------
-        indices : np.ndarray
-            The indices (categories) to encode.
-        *args, **kwargs
-            Additional arguments for `nd.one_hot`.
-        """
-        return npx.one_hot(indices, self.depth, *args, **kwargs)
+from .data.sampler import SMILESBatchColumnSampler
+from .data.vocabulary import SMILESVocabulary
+from .description.common import OneHotEncoder
+from .evaluation.loss import get_mask_for_loss
 
 
 class SMILESRNNModel(gluon.Block):
@@ -170,8 +110,8 @@ class SMILESRNNModel(gluon.Block):
     def train(
             self,
             optimizer_: optimizer.Optimizer,
-            dataloader: SMILESDataLoader,
-            loss_fn: gluon.loss.SoftmaxCELoss(),
+            dataloader: SMILESBatchColumnSampler,
+            loss_fn: gluon.loss.Loss = gluon.loss.SoftmaxCELoss(),
             ctx: context.Context = context.cpu(),
             verbose: int = 0,
     ):
@@ -182,56 +122,53 @@ class SMILESRNNModel(gluon.Block):
         ----------
         optimizer_ : mxnet.optimizer.Optimizer
             MXNet optimizer instance.
-        dataloader : SMILESDataLoader
+        dataloader : SMILESBatchColumnSampler
             SMILES data loader.
         loss_fn : gluon.loss.Loss, default gluon.loss.SoftmaxCELoss()
             Loss function.
-        ctx : mxnet.context.Context, default context.cpu(0)
+        ctx : mxnet.context.Context, default mxnet.context.cpu(0)
             CPU or GPU.
         verbose : int, default 0
             Print logs every `verbose` steps.
         """
         trainer = gluon.trainer.Trainer(self.collect_params(), optimizer_)
         loss_list: List[float] = []
-        batch_size = dataloader.batch_size
+        init_state_func: Callable = dataloader.init_state_func()
+        states: Optional[List[np.ndarray]] = None
 
         for batch_no, batch in enumerate(dataloader, start=1):
-            # Every mini-batch entry is a substring of (padded) SMILES string.
-            # If entries begin with beginning-of-SMILES token
-            # `Token.BOS` (i.e. our model has not seen any part
-            # of this mini-batch), then we initialize a new state list.
-            # Otherwise, we keep the previous state list and detach it from
-            # the computation graph.
-            if batch.s:
-                states = self.begin_state(batch_size=batch_size, ctx=ctx)
-            else:
-                states = [state.detach() for state in states]
+            states = dataloader.init_states(
+                model=self,
+                mini_batch=batch,
+                states=states,
+                init_state_func=init_state_func,
+                ctx=ctx,
+                detach=True,
+            )
 
-            inputs = batch.x.as_in_ctx(ctx)
-            outputs = batch.y.T.reshape((-1,)).as_in_ctx(ctx)
+            inputs = batch.inputs.as_in_ctx(ctx)
+            outputs = batch.outputs.T.reshape(-1).as_in_ctx(ctx)
+            valid_lengths = batch.valid_lengths.as_in_ctx(ctx)
 
             with autograd.record():
-                # Run forward computation.
                 p_outputs, states = self.forward(inputs, states)
 
                 # Get a label mask, which labels 1 for any valid token and 0
                 # for padding token `Token.PAD`.
-                label_mask = get_mask_for_loss(inputs.shape, batch.v_y)
-                label_mask = label_mask.T.reshape((-1,)).as_in_ctx(ctx)
+                label_mask = get_mask_for_loss(inputs.shape, valid_lengths)
+                label_mask = label_mask.T.reshape(-1)
 
-                # Compute loss using predictions, labels, and the label mask.
                 loss = loss_fn(p_outputs, outputs, label_mask)
 
             loss.backward()
-            trainer.step(batch_size=batch_size)
+            trainer.step(valid_lengths.sum())
 
-            # Print mean mini-batch loss and generate SMILES.
             if (batch_no - 1) % verbose == 0:
                 mean_loss = loss.mean().item()
                 loss_list.append(mean_loss)
                 print(f'Batch: {batch_no:>6}, Loss: {mean_loss:>3.3f}')
 
-                smiles = self.generate(dataloader.vocab, ctx=ctx)
+                smiles = self.generate(dataloader.vocabulary, ctx=ctx)
                 print(f'Molecule: {smiles}')
 
         if verbose > 0:
@@ -243,9 +180,9 @@ class SMILESRNNModel(gluon.Block):
 
     def generate(
             self,
-            vocabulary: Vocabulary,
+            vocabulary: SMILESVocabulary,
             prefix: str = Token.BOS,
-            max_length: int = 100,
+            max_length: int = 80,
             ctx: context.Context = context.cpu(),
             state_init_func: Optional[Callable] = None,
     ) -> str:
@@ -261,20 +198,16 @@ class SMILESRNNModel(gluon.Block):
             The maximum number of tokens to generate.
         ctx : context.Context, default: context.cpu()
             CPU or GPU.
-        state_init_func : callable, default nd.random.uniform(-0.1, 0.1)
-            Callable for state initialization.
+        state_init_func : callable, default mxnet.nd.random.uniform
+            Callable for state initialization. Must be one of mxnet.nd
+            functions, not mxnet.numpy.
 
         Returns
         -------
         smiles : str
             The SMILES string generated by the model.
         """
-        state_init_func = state_init_func or _distribution_partial(
-            nd.random.uniform,
-            low=-0.2,
-            high=0.2,
-            ctx=ctx,
-        )
+        state_init_func = state_init_func or nd.random.uniform
         state = self.begin_state(batch_size=1, func=state_init_func, ctx=ctx)
         smiles = prefix
 
@@ -282,6 +215,7 @@ class SMILESRNNModel(gluon.Block):
             input_ = np.array(vocabulary[smiles[-1]], ctx=ctx).reshape(1, 1)
             output, state = self.forward(input_, state)
 
+            # noinspection PyUnresolvedReferences
             token_id = npx.softmax(output).argmax().astype(np.int32).item()
             token = vocabulary.idx_to_token[token_id]
             if token in (Token.EOS, Token.PAD):

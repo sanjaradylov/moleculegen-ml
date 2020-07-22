@@ -2,7 +2,7 @@
 Set up moleculegen-ml package.
 """
 
-from setuptools import find_packages, setup
+from setuptools import setup
 from urllib.parse import urljoin
 
 
@@ -12,7 +12,7 @@ PACKAGE_URL = 'http://github.com/sanjaradylov/moleculegen-ml/'
 setup(
     name='moleculegen',
     description='Generate novel molecules using recurrent neural networks',
-    version='1.0.dev1',
+    version='1.0.dev2',
     author='Sanjar Ad[iy]lov',
     url=PACKAGE_URL,
     project_urls={

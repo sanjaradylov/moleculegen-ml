@@ -3,14 +3,20 @@ Utilities to create vocabularies of SMILES documents.
 
 Classes
 -------
-Vocabulary
-    Mapping SMILES characters into their numerical representation.
+SMILESVocabulary
+    Map SMILES characters into their numerical representation.
 
 Functions
 ---------
 count_tokens
     Create token counter.
 """
+
+__all__ = (
+    'count_tokens',
+    'SMILESVocabulary',
+)
+
 
 import collections
 import itertools
@@ -19,10 +25,10 @@ from typing import Counter, Dict, Generator, List, Optional, Sequence, Union
 
 from mxnet.gluon.data import SimpleDataset
 
-from .base import Token
+from ..base import Token
 
 
-class Vocabulary:
+class SMILESVocabulary:
     """A dictionary to map SMILES characters into numerical representation.
     Read SMILES strings from `dataset` and create a token counter,
     or work directly with `tokens` if specified. Eventually obtain unique
@@ -36,9 +42,8 @@ class Vocabulary:
     tokens : list, default None
         SMILES tokens.
     need_corpus : bool, default False
-        If True, property `corpus` is loaded from descriptor `Corpus`.
-        To keep original data as tokens and load a corpus,
-        pass non-empty `dataset` or `tokens`.
+        If True, load `corpus`property of token IDs for every SMILES sequence.
+        Pass non-empty `dataset` or `tokens`.
     load_from_pickle : str, default None
         If passed, load all the attributes from the file named
         `load_from_pickle`.
@@ -94,7 +99,7 @@ class Vocabulary:
                 counter.items(), key=lambda c: c[1], reverse=True))
 
             # 'Unknown' token is not used in training/prediction.
-            self._idx_to_token: List[str] = list(Token.SPECIAL - {Token.UNK})
+            self._idx_to_token: List[str] = [Token.PAD, Token.BOS, Token.EOS]
             self._token_to_idx: Dict[str, int] = {
                 token: id_ for id_, token in enumerate(self._idx_to_token)
             }

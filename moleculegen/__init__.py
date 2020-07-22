@@ -5,38 +5,29 @@ Package for generation of novel molecules using machine learning methods.
 __author__ = 'Sanjar Ad[iy]lov'
 __maintainer__ = 'Sanjar Ad[iy]lov'
 __status__ = 'Development'
-__version__ = '1.0.dev'
+__version__ = 'beta'
 
-from .base import Token
-from .data import (
-    SMILESDataset,
-    SMILESDataLoader,
-)
-from .model import (
-    OneHotEncoder,
-    SMILESRNNModel,
-)
-from .utils import (
-    Perplexity,
-    get_mask_for_loss,
-)
-from .vocab import (
-    Vocabulary,
-    count_tokens,
-)
-
-
-__all__ = [
-    # Functions.
-    'count_tokens',
-    'get_mask_for_loss',
+__all__ = (
+    # Modules.
+    'data',
+    'description',
+    'evaluation',
 
     # Classes.
-    'OneHotEncoder',
-    'Perplexity',
-    'SMILESDataLoader',
-    'SMILESDataset',
     'SMILESRNNModel',
+    'StateInitializerMixin',
     'Token',
-    'Vocabulary',
-]
+)
+
+
+from . import data
+from . import description
+from . import evaluation
+
+from .base import (
+    StateInitializerMixin,
+    Token,
+)
+from .model import (
+    SMILESRNNModel,
+)
