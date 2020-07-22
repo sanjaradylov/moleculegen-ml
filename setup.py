@@ -2,7 +2,7 @@
 Set up moleculegen-ml package.
 """
 
-from setuptools import find_packages, setup
+from setuptools import setup
 from urllib.parse import urljoin
 
 
@@ -19,7 +19,11 @@ setup(
         'Documentation': urljoin(PACKAGE_URL, 'wiki'),
         'Source Code': urljoin(PACKAGE_URL, 'tree/master/moleculegen'),
     },
-    packages=find_packages(),
+    packages=[
+        'moleculegen',
+        'moleculegen.data',
+        'moleculegen.evalutation',
+    ],
     include_package_data=False,
     install_requires=[
         'mxnet-cu101mkl',
