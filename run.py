@@ -64,7 +64,7 @@ def main():
     model arguments:
         -u HIDDEN_SIZE, --hidden_size HIDDEN_SIZE
                         The number of units in a network's hidden state.
-                        (default: 1024)
+                        (default: 256)
         -n N_LAYERS, --n_layers N_LAYERS
                         The number of hidden layers. (default: 2)
 
@@ -73,28 +73,28 @@ def main():
                         The number of batches to generate at every iteration.
                         (default: 128)
         -s N_STEPS, --n_steps N_STEPS
-                        The number of time steps. (default: 50)
+                        The number of time steps. (default: 16)
         -l LEARNING_RATE, --learning_rate LEARNING_RATE
-                        The learning rate. (default: 0.0001)
+                        The learning rate. (default: 0.0025)
         -e N_EPOCHS, --n_epochs N_EPOCHS
                         The number of epochs. (default: 20)
         -g GRAD_CLIP_LENGTH, --grad_clip_length GRAD_CLIP_LENGTH
                         The radius by which a gradient's length is
-                        constrained. (default: 5.0)
+                        constrained. (default: 10.0)
 
     logging options:
         -v VERBOSE, --verbose VERBOSE
-                        Print logs every v iterations. (default: 50)
+                        Print logs every v iterations. (default: 500)
         -r PREFIX, --prefix PREFIX
                         Initial symbol(s) of a SMILES string to generate.
                         (default: {)
         -m MAX_GEN_LENGTH, --max_gen_length MAX_GEN_LENGTH
-                        Maximum number of tokens to generate. (default: 100)
+                        Maximum number of tokens to generate. (default: 80)
         -p PREDICT_EPOCH, --predict_epoch PREDICT_EPOCH
-                        Predict new strings every p iterations. (default: 50)
+                        Predict new strings every p iterations. (default: 500)
         -k N_PREDICTIONS, --n_predictions N_PREDICTIONS
                         The number of molecules to generate and save after
-                        training. (default: 0)
+                        training. (default: 10000)
 
     other options:
         -c {cpu,CPU,gpu,GPU}, --ctx {cpu,CPU,gpu,GPU}
@@ -148,7 +148,7 @@ def main():
     rnn_layer = gluon.rnn.LSTM(
         hidden_size=options.hidden_size,
         num_layers=options.n_layers,
-        dropout=0.2,
+        dropout=0.4,
     )
     dense_layer = gluon.nn.Dense(len(vocabulary), flatten=True)
     model = SMILESRNNModel(
@@ -160,7 +160,7 @@ def main():
     # Define (hyper)parameters for model training.
     optimizer_params = {
         'learning_rate': options.learning_rate,
-        # 'clip_gradient': options.grad_clip_length,
+        'clip_gradient': options.grad_clip_length,
     }
 
     # Use CPU or GPU.
@@ -201,7 +201,7 @@ def train(
         verbose: int = 0,
         ctx: context.Context = context.cpu(0),
         prefix: str = Token.BOS,
-        max_gen_length: int = 100,
+        max_gen_length: int = 80,
         model_params_in: Union[IO, str] = None,
         model_params_out: Union[IO, str] = None,
         n_predictions: int = 0,
@@ -229,9 +229,9 @@ def train(
         Loss function.
     verbose : int, default 0
         Print logs every `verbose` steps.
-    prefix : str, default 'C'
+    prefix : str, default '{'
         The initial tokens of the string being generated.
-    max_gen_length : int, default 100
+    max_gen_length : int, default 80
         Maximum number of tokens to generate.
     model_params_in : file-like, default None
         Binary file with pre-trained model parameters.
@@ -242,7 +242,6 @@ def train(
     predictions_out : file-like, default PARENT_PATH/data/DATE__predictions.csv
         Text file to save generated predictions.
     """
-    # Initialize model weights.
     if model_params_in is not None:
         if verbose > 0:
             print(f'Loading model weights from {model_params_in!r}.')
@@ -264,7 +263,6 @@ def train(
             with time_it('Execution time'):
                 model.train(optimizer_, batch_sampler, loss_fn, ctx, verbose)
 
-            # (Optional) Save model weights.
             if model_params_out is not None:
                 if verbose > 0:
                     print(f'\nSaving model weights to {model_params_out!r}.')
@@ -273,7 +271,6 @@ def train(
         if verbose > 0:
             print('\nInterrupting script...')
 
-    # (Optional) After full training process, generate new molecules.
     if n_predictions > 0:
         if verbose > 0:
             print(
@@ -410,7 +407,7 @@ def process_options() -> argparse.Namespace:
         '-u', '--hidden_size',
         help="The number of units in a network's hidden state.",
         type=PositiveInteger,
-        default=1024,
+        default=256,
     )
     model_options.add_argument(
         '-n', '--n_layers',
@@ -430,13 +427,13 @@ def process_options() -> argparse.Namespace:
         '-s', '--n_steps',
         help='The number of time steps.',
         type=PositiveInteger,
-        default=50,
+        default=16,
     )
     fit_options.add_argument(
         '-l', '--learning_rate',
         help='The learning rate.',
         type=float,
-        default=0.0001,
+        default=0.0025,
     )
     fit_options.add_argument(
         '-e', '--n_epochs',
@@ -448,7 +445,7 @@ def process_options() -> argparse.Namespace:
         '-g', '--grad_clip_length',
         help="The radius by which a gradient's length is constrained.",
         type=float,
-        default=5.0,
+        default=10.0,
     )
 
     log_options = parser.add_argument_group('logging options')
@@ -456,7 +453,7 @@ def process_options() -> argparse.Namespace:
         '-v', '--verbose',
         help='Print logs every v iterations.',
         type=int,
-        default=50,
+        default=500,
     )
     log_options.add_argument(
         '-r', '--prefix',
@@ -467,19 +464,19 @@ def process_options() -> argparse.Namespace:
         '-m', '--max_gen_length',
         help='Maximum number of tokens to generate.',
         type=PositiveInteger,
-        default=100,
+        default=80,
     )
     log_options.add_argument(
         '-p', '--predict_epoch',
         help='Predict new strings every p iterations.',
         type=PositiveInteger,
-        default=50,
+        default=500,
     )
     log_options.add_argument(
         '-k', '--n_predictions',
         help='The number of molecules to generate and save after training.',
         type=int,
-        default=0,
+        default=10000,
     )
 
     other_options = parser.add_argument_group('other options')

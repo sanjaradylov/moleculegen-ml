@@ -47,6 +47,7 @@ class MorganFingerprint(BaseEstimator, TransformerMixin):
         self.n_bits = n_bits
         self.return_sparse = return_sparse
 
+    # noinspection PyUnusedLocal
     def fit(
             self,
             smiles_strings: MutableSequence[str],

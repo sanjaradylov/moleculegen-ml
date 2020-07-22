@@ -25,7 +25,7 @@ from typing import Counter, Dict, Generator, List, Optional, Sequence, Union
 
 from mxnet.gluon.data import SimpleDataset
 
-from moleculegen.base import Token
+from ..base import Token
 
 
 class SMILESVocabulary:

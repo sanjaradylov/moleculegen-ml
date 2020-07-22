@@ -60,10 +60,6 @@ def get_mask_for_loss(
 
 class MaskedSoftmaxCELoss(gluon.loss.SoftmaxCELoss):
     """Softmax cross-entropy loss that ignores padded tokens.
-
-    Notes
-    -----
-    ??? For some reason, this loss returns `nan`s after a couple
     """
 
     # noinspection PyMethodOverriding

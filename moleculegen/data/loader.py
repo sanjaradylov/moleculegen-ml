@@ -17,7 +17,7 @@ from typing import AnyStr, List
 
 from mxnet.gluon.data import SimpleDataset
 
-from moleculegen.base import Token
+from ..base import Token
 
 
 class SMILESDataset(SimpleDataset):
