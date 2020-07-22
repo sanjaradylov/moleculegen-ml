@@ -1,6 +1,19 @@
 """
 Utilities to create tables of descriptors.
+
+Functions
+---------
+get_descriptors
+    Create a dictionary of descriptors.
+get_descriptors_df
+    Create a pandas.DataFrame of descriptors.
 """
+
+__all__ = (
+    'get_descriptors',
+    'get_descriptors_df',
+)
+
 
 import array
 from typing import Callable, Dict, MutableSequence

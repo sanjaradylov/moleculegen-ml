@@ -15,8 +15,8 @@ class TokenTestCase(unittest.TestCase):
         self.aug_w_pad = (
             Token.BOS
             + self.smiles
-            + Token.PAD * self.n_pad
             + Token.EOS
+            + Token.PAD * self.n_pad
         )
 
     def test_augment(self):

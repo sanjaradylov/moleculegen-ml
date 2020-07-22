@@ -1,15 +1,26 @@
 """
-Utilities.
+Additional metrics for model evaluation.
+
+Classes
+-------
+Perplexity
+    Re-implementation of mxnet.metrics.Perplexity, which supports Numpy
+    ndarray.
 """
 
-from typing import Sequence, Tuple, Union
+__all__ = (
+    'Perplexity',
+)
 
-from mxnet import metric, np, npx
+
+from typing import Sequence, Union
+
+from mxnet import metric, np
 
 
 class Perplexity(metric.Perplexity):
-    """Re-implementation of mxnet.metrics.Perplexity that supports Numpy
-    ndarrays. See the documentation for more information.
+    """Re-implementation of mxnet.metrics.Perplexity, which supports Numpy
+    ndarray. See the documentation for more information.
     """
 
     def update(
@@ -44,6 +55,7 @@ class Perplexity(metric.Perplexity):
                 ignore = (label == self.ignore_label).astype(prediction.dtype)
                 num -= ignore.astype(np.int32).item()
                 probability = probability * (1 - ignore) + ignore
+            # noinspection PyUnresolvedReferences
             loss -= np.sum(np.log(np.maximum(1e-10, probability))).item()
             num += 1
 
@@ -51,27 +63,3 @@ class Perplexity(metric.Perplexity):
         self.global_sum_metric += loss
         self.num_inst += num
         self.global_num_inst += num
-
-
-def get_mask_for_loss(
-        label_shape: Tuple[int, ...],
-        valid_lengths: np.ndarray,
-) -> np.ndarray:
-    """Get mask of valid labels, i.e. Token.PAD is invalid,
-    therefore filled with zeros, and other tokens retain their weights = 1.
-
-    Parameters
-    ----------
-    label_shape : tuple of int
-        Label shape.
-    valid_lengths : np.ndarray, shape = label_shape[0]
-        For every entry in labels, specified valid token length.
-
-    Returns
-    -------
-    label_mask : np.ndarray, shape = label_shape
-        Mask of valid labels.
-    """
-    label_weights = np.expand_dims(np.ones(label_shape), axis=-1)
-    label_mask = npx.sequence_mask(label_weights, valid_lengths, True, axis=1)
-    return label_mask
