@@ -12,6 +12,7 @@ __all__ = (
     'data',
     'description',
     'evaluation',
+    'generation',
 
     # Classes.
     'SMILESRNNModel',
@@ -23,6 +24,7 @@ __all__ = (
 from . import data
 from . import description
 from . import evaluation
+from . import generation
 
 from .base import (
     StateInitializerMixin,
