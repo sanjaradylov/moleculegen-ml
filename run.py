@@ -26,7 +26,7 @@ from moleculegen.data import (
     SMILESBatchColumnSampler,
     SMILESVocabulary,
 )
-from moleculegen.description import OneHotEncoder
+from moleculegen.generation import GreedySearch
 
 
 # Some useful constants to define file names.
@@ -144,7 +144,7 @@ def main():
     )
 
     # Define model architecture.
-    embedding_layer = OneHotEncoder(len(vocabulary))
+    embedding_layer = gluon.nn.Embedding(len(vocabulary), 24)
     rnn_layer = gluon.rnn.LSTM(
         hidden_size=options.hidden_size,
         num_layers=options.n_layers,
@@ -164,10 +164,13 @@ def main():
     }
 
     # Use CPU or GPU.
-    ctx = {
+    ctx_map = {
         'cpu': context.cpu(0),
         'gpu': context.gpu(0),
     }
+    ctx = ctx_map[options.ctx.lower()]
+
+    predictor = GreedySearch(ctx=lambda array: array.as_in_ctx(ctx))
 
     # Begin fitting the model and generating novel molecules.
     train(
@@ -177,7 +180,8 @@ def main():
         n_epochs=options.n_epochs,
         predict_epoch=options.predict_epoch,
         verbose=options.verbose,
-        ctx=ctx[options.ctx.lower()],
+        ctx=ctx,
+        predictor=predictor,
         prefix=options.prefix,
         max_gen_length=options.max_gen_length,
         model_params_in=options.model_params_in,
@@ -200,6 +204,7 @@ def train(
         ),
         verbose: int = 0,
         ctx: context.Context = context.cpu(0),
+        predictor: Optional[GreedySearch] = None,
         prefix: str = Token.BOS,
         max_gen_length: int = 80,
         model_params_in: Union[IO, str] = None,
@@ -229,6 +234,8 @@ def train(
         Loss function.
     verbose : int, default 0
         Print logs every `verbose` steps.
+    predictor : GreedySearch, default None
+            SMILES predictor.
     prefix : str, default '{'
         The initial tokens of the string being generated.
     max_gen_length : int, default 80
@@ -261,7 +268,9 @@ def train(
                 print(f'\nEpoch: {epoch:>3}\n')
 
             with time_it('Execution time'):
-                model.train(optimizer_, batch_sampler, loss_fn, ctx, verbose)
+                model.train(
+                    optimizer_, batch_sampler, loss_fn, predictor,
+                    ctx, verbose)
 
             if model_params_out is not None:
                 if verbose > 0:
@@ -279,12 +288,14 @@ def train(
             )
         with open(predictions_out, 'w') as fh:
             with time_it('Execution time'):
+                gen_states = model.begin_state(batch_size=1, ctx=ctx)
                 for _ in range(n_predictions):
-                    smiles = model.generate(
-                        batch_sampler.vocabulary,
+                    smiles = predictor(
+                        model=model,
+                        states=gen_states,
+                        vocabulary=batch_sampler.vocabulary,
                         prefix=prefix,
                         max_length=max_gen_length,
-                        ctx=ctx,
                     )
                     fh.write(f'{smiles}\n')
 
