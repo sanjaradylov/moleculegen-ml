@@ -17,6 +17,7 @@ from .data.sampler import SMILESBatchColumnSampler
 from .data.vocabulary import SMILESVocabulary
 from .description.common import OneHotEncoder
 from .evaluation.loss import get_mask_for_loss
+from .generation.greedy_search import GreedySearch
 
 
 class SMILESRNNModel(gluon.Block):
@@ -112,6 +113,7 @@ class SMILESRNNModel(gluon.Block):
             optimizer_: optimizer.Optimizer,
             dataloader: SMILESBatchColumnSampler,
             loss_fn: gluon.loss.Loss = gluon.loss.SoftmaxCELoss(),
+            predictor: Optional[GreedySearch] = None,
             ctx: context.Context = context.cpu(),
             verbose: int = 0,
     ):
@@ -126,6 +128,8 @@ class SMILESRNNModel(gluon.Block):
             SMILES data loader.
         loss_fn : gluon.loss.Loss, default gluon.loss.SoftmaxCELoss()
             Loss function.
+        predictor : GreedySearch, default None
+            SMILES predictor.
         ctx : mxnet.context.Context, default mxnet.context.cpu(0)
             CPU or GPU.
         verbose : int, default 0
@@ -168,7 +172,9 @@ class SMILESRNNModel(gluon.Block):
                 loss_list.append(mean_loss)
                 print(f'Batch: {batch_no:>6}, Loss: {mean_loss:>3.3f}')
 
-                smiles = self.generate(dataloader.vocabulary, ctx=ctx)
+                gen_states = self.begin_state(
+                    batch_size=1, func=init_state_func, ctx=ctx)
+                smiles = predictor(self, gen_states, dataloader.vocabulary)
                 print(f'Molecule: {smiles}')
 
         if verbose > 0:
