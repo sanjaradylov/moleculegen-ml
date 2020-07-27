@@ -23,6 +23,7 @@ setup(
         'moleculegen',
         'moleculegen.data',
         'moleculegen.evaluation',
+        'moleculegen.generation',
     ],
     include_package_data=False,
     install_requires=[
