@@ -11,6 +11,7 @@ __all__ = (
     # Modules.
     'data',
     'description',
+    'estimation',
     'evaluation',
     'generation',
 
@@ -23,6 +24,7 @@ __all__ = (
 
 from . import data
 from . import description
+from . import estimation
 from . import evaluation
 from . import generation
 
