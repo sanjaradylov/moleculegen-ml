@@ -11,7 +11,7 @@ from moleculegen.data import (
     SMILESBatchColumnSampler,
     SMILESVocabulary,
 )
-from moleculegen.estimation import SMILESRNNModel
+from moleculegen.estimation import SMILESEncoderDecoder
 from moleculegen.tests.utils import TempSMILESFile
 
 
@@ -31,7 +31,7 @@ class SMILESRNNModelTestCase(unittest.TestCase):
         self.n_rnn_layers = 1  # Used in output/state shape testing.
         self.n_rnn_units = 32  # Used in output/state shape testing.
 
-        self.model = SMILESRNNModel(
+        self.model = SMILESEncoderDecoder(
             len(vocabulary),
             use_one_hot=False,
             embedding_dim=4,

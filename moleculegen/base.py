@@ -19,7 +19,7 @@ __all__ = (
 
 import functools
 from typing import Any, Callable, FrozenSet, List, Optional
-from mxnet import context, nd, np
+from mxnet import nd, np
 
 
 class Token:
@@ -222,7 +222,6 @@ class StateInitializerMixin:
             states: Optional[List[np.ndarray]] = None,
             init_state_func: Optional[
                 Callable[[Any], nd.ndarray.NDArray]] = None,
-            ctx: context.Context = context.cpu(),
             *args,
             **kwargs,
     ) -> List[np.ndarray]:
@@ -243,8 +242,6 @@ class StateInitializerMixin:
             If None, the previous states will be returned.
             Recommended to use `StateInitializerMixin.init_state_func` method
             to declare this callable.
-        ctx : mxnet.context.Context, default mxnet.context.cpu()
-            CPU or GPU.
 
         Returns
         -------
@@ -256,6 +253,10 @@ class StateInitializerMixin:
         AttributeError
             If `mini_batch` does not have `shape` attribute.
             If `model` does not implement `begin_state` method.
+
+        Notes
+        -----
+        The context of the hidden states is the same as the `model`s context.
         """
         if not hasattr(mini_batch, 'shape'):
             raise AttributeError(
@@ -269,7 +270,6 @@ class StateInitializerMixin:
         if states is None:
             states = model.begin_state(
                 batch_size=mini_batch.shape[0],
-                ctx=ctx,
                 func=init_state_func,
             )
 
@@ -303,7 +303,10 @@ class StateInitializerMixin:
             If `shape` parameter is included in `distribution_args`.
             This parameter will be used separately in state initialization.
         """
-        if 'shape' in func_kwargs:
-            raise ValueError('`shape` parameter should be not be specified.')
+        if 'shape' in func_kwargs or 'ctx' in func_kwargs:
+            raise ValueError(
+                '`shape` and `ctx` parameters should not be passed, since '
+                'they are processed internally by the model.'
+            )
 
         return functools.partial(func, **func_kwargs)

@@ -55,11 +55,20 @@ def mlp(
         dtype: str,
         **kwargs,
 ) -> gluon.Block:
-    """An MLP built with mxnet.gluon.nn.Sequential.
+    """A single dense layer or an MLP built with mxnet.gluon.nn.Sequential.
     """
+    output_dense = gluon.nn.Dense(
+        units=output_dim,
+        dtype=dtype,
+        flatten=False,
+    )
+
+    if n_layers == 1:
+        return output_dense
+
     net = gluon.nn.Sequential()
 
-    for _ in range(n_layers - 1):
+    for _ in range(n_layers-1):
         net.add(gluon.nn.Dense(
             units=n_units,
             dtype=dtype,
@@ -67,10 +76,6 @@ def mlp(
             flatten=False,
         ))
 
-    net.add(gluon.nn.Dense(
-        units=output_dim,
-        dtype=dtype,
-        flatten=False,
-    ))
+    net.add(output_dense)
 
     return net

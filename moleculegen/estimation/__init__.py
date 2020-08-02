@@ -3,13 +3,13 @@ Create, train, evaluate, and fine-tune generative models.
 
 Classes
 -------
-SMILESRNNModel
+SMILESEncoderDecoder
     A generative recurrent neural network to encode-decode SMILES strings.
 """
 
 __all__ = (
-    'SMILESRNNModel',
+    'SMILESEncoderDecoder',
 )
 
 
-from .model import SMILESRNNModel
+from .model import SMILESEncoderDecoder

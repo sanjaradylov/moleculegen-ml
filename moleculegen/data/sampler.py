@@ -51,6 +51,27 @@ class Batch:
         """
         return self.inputs.shape
 
+    def as_in_ctx(self, ctx: context.Context = context.cpu()) -> 'Batch':
+        """Change the context of the mxnet.np.ndarray fields of the instance.
+
+        Parameters
+        ----------
+        ctx : mxnet.context.Context, default mxnet.context.cpu()
+            CPU or GPU.
+
+        Returns
+        -------
+        batch : Batch
+        """
+        return self.__class__(**{
+            key: (
+                value.as_in_ctx(ctx)
+                if isinstance(value, np.ndarray)
+                else value
+            )
+            for key, value in dataclasses.asdict(self).items()
+        })
+
 
 class SMILESBatchColumnSampler(StateInitializerMixin):
     """Generate batches of SMILES subsequences. Collect SMILES sequences of
@@ -362,7 +383,6 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
             states: Optional[List[np.ndarray]] = None,
             init_state_func: Optional[
                 Callable[[Any], nd.ndarray.NDArray]] = None,
-            ctx: context.Context = context.cpu(),
             detach: bool = False,
             *args,
             **kwargs,
@@ -384,8 +404,6 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
             If None, the previous states will be returned.
             Recommended to use `StateInitializerMixin.init_state_func` method
             to declare this callable.
-        ctx : mxnet.context.Context, default mxnet.context.cpu()
-            CPU or GPU.
         detach : bool, default False
             Whether to detach `states` from the computational graph.
 
@@ -399,6 +417,10 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
         AttributeError
             If `mini_batch` does not have `shape` attribute.
             If `model` does not implement `begin_state` method.
+
+        Notes
+        -----
+        The context of the hidden states is the same as the `model`s context.
         """
         if mini_batch.init_state or states is None:
             states = super().init_states(
@@ -406,7 +428,6 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
                 mini_batch=mini_batch,
                 states=states,
                 init_state_func=init_state_func,
-                ctx=ctx,
             )
 
         if detach:
