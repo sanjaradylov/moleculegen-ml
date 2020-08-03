@@ -12,12 +12,13 @@ __all__ = (
 )
 
 
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Sequence, Tuple, Union
 
 import mxnet as mx
 from mxnet import autograd, gluon
 
 from . import _gluon_common
+from ..callback.base import Callback
 from ..data.sampler import SMILESBatchColumnSampler
 from ..description.common import OneHotEncoder
 from ..evaluation.loss import get_mask_for_loss
@@ -275,15 +276,53 @@ class SMILESEncoderDecoder(gluon.Block):
             optimizer: mx.optimizer.Optimizer,
             loss_fn: gluon.loss.Loss,
             n_epochs: int = 1,
+            callbacks: Optional[Sequence[Callback]] = None,
     ):
+        """Train the model for `n_epochs` number of epochs. Optionally call `callbacks`
+        to monitor training progress.
+
+        Parameters
+        ----------
+        batch_sampler : SMILESBatchColumnSampler
+            The dataloader to sample mini-batches.
+        optimizer : mxmet.optimizer.Optimizer
+            An mxnet optimizer.
+        loss_fn : mxnet.gluon.loss.Loss
+            A gluon loss functor.
+        n_epochs : int, default 1
+            The number of epochs to train.
+        callbacks : sequence of Callback, default None
+            The callbacks to run during training.
+        """
+        # The named arguments required by callbacks on epoch/batch calls.
+        init_params = {
+            # Constant parameters.
+            'batch_sampler': batch_sampler,
+            'optimizer': optimizer,
+            'loss_fn': loss_fn,
+            'n_epochs': n_epochs,
+            # Changeable parameters.
+            'model': self,
+            'epoch': 0,
+        }
+        # The named arguments required by callbacks on batch calls.
+        train_params = dict.fromkeys(['batch_no', 'batch', 'loss'])
+        callbacks = callbacks or []
+
         try:
             trainer = gluon.Trainer(self.collect_params(), optimizer)
+            state_func: Callable = batch_sampler.init_state_func()
 
             for epoch in range(1, n_epochs + 1):
-                state_func: Callable = batch_sampler.init_state_func()
+
+                init_params['epoch'] = epoch
+                for callback in callbacks:
+                    callback.on_epoch_begin(**init_params)
+
                 states: Optional[List[mx.np.ndarray]] = None
 
                 for batch_no, batch in enumerate(batch_sampler, start=1):
+
                     batch = batch.as_in_ctx(self.ctx)
                     states = batch_sampler.init_states(
                         model=self,
@@ -293,15 +332,28 @@ class SMILESEncoderDecoder(gluon.Block):
                         detach=True,
                     )
 
+                    train_params['batch_no'] = batch_no
+                    train_params['batch'] = batch
+                    for callback in callbacks:
+                        callback.on_batch_begin(**init_params, **train_params)
+
                     with autograd.record():
-                        predictions, states = self.forward(
-                            batch.inputs, states)
-                        weights = get_mask_for_loss(
-                            batch.shape, batch.valid_lengths)
+                        predictions, states = self.forward(batch.inputs, states)
+                        weights = get_mask_for_loss(batch.shape, batch.valid_lengths)
                         loss = loss_fn(predictions, batch.outputs, weights)
 
                     loss.backward()
                     trainer.step(batch.valid_lengths.sum())
 
+                    train_params['loss'] = loss
+                    for callback in callbacks:
+                        callback.on_batch_end(**init_params, **train_params)
+
+                init_params['model'] = self
+                for callback in callbacks:
+                    callback.on_epoch_end(**init_params, **train_params)
+
         except KeyboardInterrupt:
-            pass
+            init_params['model'] = self
+            for callback in callbacks:
+                callback.on_keyboard_interrupt(**init_params)

@@ -5,7 +5,9 @@ Test models and trainers.
 import unittest
 
 import mxnet as mx
+from mxnet import gluon
 
+from moleculegen.callback import ProgressBar
 from moleculegen.data import (
     SMILESDataset,
     SMILESBatchColumnSampler,
@@ -39,12 +41,12 @@ class SMILESRNNModelTestCase(unittest.TestCase):
             rnn='lstm',
             n_rnn_layers=self.n_rnn_layers,
             n_rnn_units=self.n_rnn_units,
-            rnn_dropout=0.2,
+            rnn_dropout=0.0,
             rnn_init=mx.init.Normal(),
-            n_dense_layers=2,
+            n_dense_layers=1,
             n_dense_units=64,
             dense_activation='relu',
-            dense_dropout=0.4,
+            dense_dropout=0.0,
             dense_init=mx.init.Xavier(),
             dtype='float32',
         )
@@ -57,7 +59,6 @@ class SMILESRNNModelTestCase(unittest.TestCase):
             'lstm0_l0_i2h_bias', 'lstm0_l0_h2h_bias',
 
             'dense0_weight', 'dense0_bias',
-            'dense1_weight', 'dense1_bias',
         )
 
         for actual_p, test_p in zip(param_names, self.model.collect_params()):
@@ -83,6 +84,19 @@ class SMILESRNNModelTestCase(unittest.TestCase):
                 self.n_rnn_units,
             ),
             states[0].shape,
+        )
+
+    def test_3_fit(self):
+        """Test fit method 'visually', without assertions. See bars and logs to ensure
+        that training progresses.
+        """
+        callbacks = [ProgressBar()]
+        self.model.fit(
+            batch_sampler=self.batch_sampler,
+            optimizer=mx.optimizer.Adam(learning_rate=0.005),
+            loss_fn=gluon.loss.SoftmaxCELoss(),
+            n_epochs=20,
+            callbacks=callbacks,
         )
 
     def tearDown(self):

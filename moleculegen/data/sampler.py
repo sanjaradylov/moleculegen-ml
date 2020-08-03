@@ -240,7 +240,7 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
         self.__n_steps = n_steps
 
     def __len__(self) -> int:
-        """Return the number of samples.
+        """Return the number of batches.
         """
         n_samples = 0
         for n_samples, _ in enumerate(iter(self), start=1):

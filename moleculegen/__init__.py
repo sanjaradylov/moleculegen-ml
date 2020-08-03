@@ -9,6 +9,7 @@ __version__ = 'beta'
 
 __all__ = (
     # Modules.
+    'callback',
     'data',
     'description',
     'estimation',
@@ -22,6 +23,7 @@ __all__ = (
 )
 
 
+from . import callback
 from . import data
 from . import description
 from . import estimation
