@@ -78,7 +78,7 @@ class ProgressBar(Callback):
             + self.__left_border + '{bar}' + self.__right_border + ' '
             + 'Batch {batch_no}/' + str(self._n_batches) + ', '
             + 'Loss {loss:.3f}, '
-            + '{batch_time:.2f} sec/batch'
+            + '{batch_time:.3f} sec/batch'
         )
 
     def _init_bar(self, length: int):
@@ -97,6 +97,11 @@ class ProgressBar(Callback):
             - n_epochs
             - epoch
         """
+        self._epoch_start_time = time.time()
+
+        epoch_digits = len(str(fit_kwargs.get('n_epochs')))
+        self._epoch = f'{fit_kwargs.get("epoch"):>{epoch_digits}}'
+
         self._loss_list = []
 
         self._n_batches = len(fit_kwargs.get('batch_sampler'))
@@ -108,10 +113,6 @@ class ProgressBar(Callback):
         else:
             bar_length = self.__length
         self._init_bar(bar_length)
-
-        epoch_digits = len(str(fit_kwargs.get('n_epochs')))
-        self._epoch = f'{fit_kwargs.get("epoch"):>{epoch_digits}}'
-        self._epoch_start_time = time.time()
 
     def on_batch_begin(self, **fit_kwargs):
         """Start countdown.

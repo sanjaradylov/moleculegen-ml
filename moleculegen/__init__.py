@@ -17,7 +17,6 @@ __all__ = (
     'generation',
 
     # Classes.
-    'SMILESRNNModel',
     'StateInitializerMixin',
     'Token',
 )
@@ -33,7 +32,4 @@ from . import generation
 from .base import (
     StateInitializerMixin,
     Token,
-)
-from .model import (
-    SMILESRNNModel,
 )

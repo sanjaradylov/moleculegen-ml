@@ -17,7 +17,7 @@ from moleculegen.estimation import SMILESEncoderDecoder
 from moleculegen.tests.utils import TempSMILESFile
 
 
-class SMILESRNNModelTestCase(unittest.TestCase):
+class SMILESEncoderDecoderTestCase(unittest.TestCase):
     def setUp(self):
         temp_file = TempSMILESFile(tempfile_kwargs={'prefix': 'model'})
         self.fh = temp_file.open()

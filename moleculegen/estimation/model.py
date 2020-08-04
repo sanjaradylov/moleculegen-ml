@@ -19,7 +19,7 @@ from mxnet import autograd, gluon
 
 from . import _gluon_common
 from ..callback.base import Callback
-from ..data.sampler import SMILESBatchColumnSampler
+from ..data.sampler import BatchSampler
 from ..description.common import OneHotEncoder
 from ..evaluation.loss import get_mask_for_loss
 
@@ -272,7 +272,7 @@ class SMILESEncoderDecoder(gluon.Block):
 
     def fit(
             self,
-            batch_sampler: SMILESBatchColumnSampler,
+            batch_sampler: BatchSampler,
             optimizer: mx.optimizer.Optimizer,
             loss_fn: gluon.loss.Loss,
             n_epochs: int = 1,
@@ -283,7 +283,7 @@ class SMILESEncoderDecoder(gluon.Block):
 
         Parameters
         ----------
-        batch_sampler : SMILESBatchColumnSampler
+        batch_sampler : BatchSampler
             The dataloader to sample mini-batches.
         optimizer : mxmet.optimizer.Optimizer
             An mxnet optimizer.

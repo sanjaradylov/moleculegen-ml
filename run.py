@@ -7,39 +7,14 @@ evaluate new molecules.
 
 __author__ = 'Sanjar Ad[iy]lov'
 
-
 import argparse
-import contextlib
-import datetime
 import pathlib
-import time
-from typing import Any, Dict, IO, Optional, Union
+from typing import Optional
 
-from mxnet import context, gluon, init, npx, optimizer
+import mxnet as mx
+from mxnet import gluon
 
-from moleculegen import (
-    SMILESRNNModel,
-    Token,
-)
-from moleculegen.data import (
-    SMILESDataset,
-    SMILESBatchColumnSampler,
-    SMILESVocabulary,
-)
-from moleculegen.generation import GreedySearch
-
-
-# Some useful constants to define file names.
-DATE = datetime.datetime.now().strftime('%m_%d_%H_%M')
-DIRECTORY = pathlib.Path(__file__).resolve().parent
-PREDICTIONS_OUT_DEF = DIRECTORY / 'data' / 'sets' / f'{DATE}.csv'
-
-# The set of prohibited tokens to filter out redundant compounds.
-PROHIBITED_TOKENS = frozenset(
-    [
-        'Sn', 'K', 'Al', 'Te', 'te', 'Li', 'As', 'Na', 'Se', 'se',
-    ]
-)
+import moleculegen as mg
 
 
 def main():
@@ -71,16 +46,16 @@ def main():
     hyperparameters:
         -b BATCH_SIZE, --batch_size BATCH_SIZE
                         The number of batches to generate at every iteration.
-                        (default: 128)
+                        (default: 64)
         -s N_STEPS, --n_steps N_STEPS
-                        The number of time steps. (default: 16)
+                        The number of time steps. (default: 32)
         -l LEARNING_RATE, --learning_rate LEARNING_RATE
-                        The learning rate. (default: 0.0025)
+                        The learning rate. (default: 0.005)
         -e N_EPOCHS, --n_epochs N_EPOCHS
                         The number of epochs. (default: 20)
         -g GRAD_CLIP_LENGTH, --grad_clip_length GRAD_CLIP_LENGTH
                         The radius by which a gradient's length is
-                        constrained. (default: 10.0)
+                        constrained. (default: 16.0)
 
     logging options:
         -v VERBOSE, --verbose VERBOSE
@@ -121,207 +96,71 @@ def main():
         !!! Use tokenization on `smiles` if any prohibited token matches
         subtokens from a valid token set (e.g. 'Fe' is valid, but 'F' isn't).
         """
-        for token in PROHIBITED_TOKENS:
+        for token in prohibited_tokens:
             if token in smiles:
                 return True
         return False
 
-    # Process command line arguments.
     options = process_options()
 
-    # Load raw SMILES data.
-    dataset = SMILESDataset(filename=options.stage1_data)
-    # Remove the data containing prohibited tokens.
+    dataset = mg.data.SMILESDataset(filename=options.stage1_data)
+    prohibited_tokens = frozenset(
+        [
+            'Sn', 'K', 'Al', 'Te', 'te', 'Li', 'As', 'Na', 'Se', 'se',
+        ]
+    )
     dataset = dataset.filter(lambda smiles: not has_prohibited_tokens(smiles))
 
-    vocabulary = SMILESVocabulary(dataset, need_corpus=True)
+    vocabulary = mg.data.SMILESVocabulary(dataset, need_corpus=True)
 
-    # Define data loader, which generates mini-batches for training.
-    batch_sampler = SMILESBatchColumnSampler(
+    sequence_sampler = mg.data.SMILESConsecutiveSampler(
         vocabulary,
-        batch_size=options.batch_size,
         n_steps=options.n_steps,
+        shuffle=True,
+    )
+    batch_sampler = mg.data.SMILESBatchSampler(
+        sequence_sampler,
+        batch_size=options.batch_size,
+        last_batch='discard',
     )
 
-    # Define model architecture.
-    embedding_layer = gluon.nn.Embedding(len(vocabulary), 24)
-    rnn_layer = gluon.rnn.LSTM(
-        hidden_size=options.hidden_size,
-        num_layers=options.n_layers,
-        dropout=0.4,
-    )
-    dense_layer = gluon.nn.Dense(len(vocabulary), flatten=True)
-    model = SMILESRNNModel(
-        embedding_layer=embedding_layer,
-        rnn_layer=rnn_layer,
-        dense_layer=dense_layer,
-    )
-
-    # Define (hyper)parameters for model training.
-    optimizer_params = {
-        'learning_rate': options.learning_rate,
-        'clip_gradient': options.grad_clip_length,
-    }
-
-    # Use CPU or GPU.
     ctx_map = {
-        'cpu': context.cpu(0),
-        'gpu': context.gpu(0),
+        'cpu': mx.context.cpu(0),
+        'gpu': mx.context.gpu(0),
     }
     ctx = ctx_map[options.ctx.lower()]
 
-    predictor = GreedySearch(ctx=lambda array: array.as_in_ctx(ctx))
-
-    # Begin fitting the model and generating novel molecules.
-    train(
-        batch_sampler=batch_sampler,
-        model=model,
-        optimizer_params=optimizer_params,
-        n_epochs=options.n_epochs,
-        predict_epoch=options.predict_epoch,
-        verbose=options.verbose,
+    model = mg.estimation.SMILESEncoderDecoder(
+        len(vocabulary),
+        embedding_dim=32,
+        n_rnn_layers=options.n_layers,
+        n_rnn_units=options.hidden_size,
+        rnn_dropout=0.4,
+        dense_dropout=0.1,
         ctx=ctx,
-        predictor=predictor,
-        prefix=options.prefix,
-        max_gen_length=options.max_gen_length,
-        model_params_in=options.model_params_in,
-        model_params_out=options.model_params_out,
-        n_predictions=options.n_predictions,
-        predictions_out=options.predictions,
     )
 
+    lr_scheduler = mx.lr_scheduler.FactorScheduler(
+        factor=0.9,
+        stop_factor_lr=1e-5,
+        base_lr=options.learning_rate,
+        step=len(batch_sampler),
+    )
+    optimizer = mx.optimizer.FTML(
+        learning_rate=options.learning_rate,
+        # clip_gradient=options.grad_clip_length,
+        lr_scheduler=lr_scheduler,
+    )
+    loss_fn = gluon.loss.SoftmaxCELoss()
+    callbacks = [mg.callback.ProgressBar()]
 
-def train(
-        batch_sampler: SMILESBatchColumnSampler,
-        model: SMILESRNNModel,
-        optimizer_params: Dict[str, Any],
-        opt: Union[str, optimizer.Optimizer] = 'adam',
-        n_epochs: int = 1,
-        predict_epoch: int = 20,
-        loss_fn: gluon.loss.Loss = gluon.loss.SoftmaxCrossEntropyLoss(
-            from_logits=False,
-            sparse_label=True,
-        ),
-        verbose: int = 0,
-        ctx: context.Context = context.cpu(0),
-        predictor: Optional[GreedySearch] = None,
-        prefix: str = Token.BOS,
-        max_gen_length: int = 80,
-        model_params_in: Union[IO, str] = None,
-        model_params_out: Union[IO, str] = None,
-        n_predictions: int = 0,
-        predictions_out: Union[IO, str] = PREDICTIONS_OUT_DEF,
-):
-    """Fit `model` with data from `batch_sampler`.
-
-    Parameters
-    ----------
-    batch_sampler : SMILESDataLoader
-        SMILES data loader.
-    model : SMILESRNNModel
-        Language model to fit.
-    optimizer_params : dict
-        gluon.Trainer optimizer_params.
-    opt : str or optimizer.Optimizer, default 'adam'
-        Optimizer constructor.
-    n_epochs : int, default 1
-        Number of train epochs.
-    predict_epoch : int, default 20
-        Predict a new string every 20 iterations.
-    ctx : mxnet.context.Context, default context.cpu(0)
-        CPU or GPU.
-    loss_fn : gluon.loss.Loss, default gluon.loss.SoftmaxCrossEntropyLoss()
-        Loss function.
-    verbose : int, default 0
-        Print logs every `verbose` steps.
-    predictor : GreedySearch, default None
-            SMILES predictor.
-    prefix : str, default '{'
-        The initial tokens of the string being generated.
-    max_gen_length : int, default 80
-        Maximum number of tokens to generate.
-    model_params_in : file-like, default None
-        Binary file with pre-trained model parameters.
-    model_params_out : file-like, default None
-        Binary file to save trained model parameters.
-    n_predictions : int, default 0
-        The number of molecules to generate and save after training.
-    predictions_out : file-like, default PARENT_PATH/data/DATE__predictions.csv
-        Text file to save generated predictions.
-    """
-    if model_params_in is not None:
-        if verbose > 0:
-            print(f'Loading model weights from {model_params_in!r}.')
-        model.load_parameters(model_params_in, ctx=ctx)
-    else:
-        model.initialize(
-            ctx=ctx,
-            force_reinit=True,
-            init=init.Xavier(rnd_type='gaussian', factor_type='avg'),
-        )
-
-    optimizer_ = optimizer.create(opt, **optimizer_params)
-
-    try:
-        for epoch in range(1, n_epochs + 1):
-            if verbose > 0:
-                print(f'\nEpoch: {epoch:>3}\n')
-
-            with time_it('Execution time'):
-                model.train(
-                    optimizer_, batch_sampler, loss_fn, predictor,
-                    ctx, verbose)
-
-            if model_params_out is not None:
-                if verbose > 0:
-                    print(f'\nSaving model weights to {model_params_out!r}.')
-                model.save_parameters(model_params_out)
-    except KeyboardInterrupt:
-        if verbose > 0:
-            print('\nInterrupting script...')
-
-    if n_predictions > 0:
-        if verbose > 0:
-            print(
-                f"\nGenerating novel molecules and saving results in "
-                f"'{predictions_out}'."
-            )
-        with open(predictions_out, 'w') as fh:
-            with time_it('Execution time'):
-                gen_states = model.begin_state(batch_size=1, ctx=ctx)
-                for _ in range(n_predictions):
-                    smiles = predictor(
-                        model=model,
-                        states=gen_states,
-                        vocabulary=batch_sampler.vocabulary,
-                        prefix=prefix,
-                        max_length=max_gen_length,
-                    )
-                    fh.write(f'{smiles}\n')
-
-    if verbose > 0:
-        print('\nDone!\n')
-
-
-@contextlib.contextmanager
-def time_it(message: str = ''):
-    """Context manager that calculates the execution time.
-
-    Parameters
-    ----------
-    message : str
-        Log message to print prior to the execution time.
-    """
-    start_time = time.time()
-    try:
-        yield
-    finally:
-        seconds_left = time.time() - start_time
-        exec_time = datetime.timedelta(seconds=seconds_left)
-
-        if message:
-            message = f'{message}: '
-        print(f'{message}{exec_time}.')
+    model.fit(
+        batch_sampler=batch_sampler,
+        optimizer=optimizer,
+        loss_fn=loss_fn,
+        n_epochs=options.n_epochs,
+        callbacks=callbacks,
+    )
 
 
 def process_options() -> argparse.Namespace:
@@ -341,6 +180,7 @@ def process_options() -> argparse.Namespace:
         ValueError
             If requirement is not satisfied.
         """
+
         def __new__(
                 cls,
                 value: int,
@@ -359,6 +199,7 @@ def process_options() -> argparse.Namespace:
     class ValidFileAction(argparse.Action):
         """Requires filename to be valid.
         """
+
         def __call__(
                 self,
                 parser_: argparse.ArgumentParser,
@@ -410,7 +251,7 @@ def process_options() -> argparse.Namespace:
     file_options.add_argument(
         '-O', '--predictions',
         help='Save predicted molecules in this file.',
-        default=PREDICTIONS_OUT_DEF,
+        default='data/sets/predictions.csv',
     )
 
     model_options = parser.add_argument_group('model arguments')
@@ -432,19 +273,19 @@ def process_options() -> argparse.Namespace:
         '-b', '--batch_size',
         help='The number of batches to generate at every iteration.',
         type=PositiveInteger,
-        default=128,
+        default=64,
     )
     fit_options.add_argument(
         '-s', '--n_steps',
         help='The number of time steps.',
         type=PositiveInteger,
-        default=16,
+        default=32,
     )
     fit_options.add_argument(
         '-l', '--learning_rate',
         help='The learning rate.',
         type=float,
-        default=0.0025,
+        default=0.005,
     )
     fit_options.add_argument(
         '-e', '--n_epochs',
@@ -456,7 +297,7 @@ def process_options() -> argparse.Namespace:
         '-g', '--grad_clip_length',
         help="The radius by which a gradient's length is constrained.",
         type=float,
-        default=10.0,
+        default=16.0,
     )
 
     log_options = parser.add_argument_group('logging options')
@@ -469,7 +310,7 @@ def process_options() -> argparse.Namespace:
     log_options.add_argument(
         '-r', '--prefix',
         help='Initial symbol(s) of a SMILES string to generate.',
-        default=Token.BOS,
+        default=mg.Token.BOS,
     )
     log_options.add_argument(
         '-m', '--max_gen_length',
@@ -513,5 +354,5 @@ def process_options() -> argparse.Namespace:
 
 
 if __name__ == '__main__':
-    npx.set_np()
+    mx.npx.set_np()
     main()
