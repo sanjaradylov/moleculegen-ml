@@ -3,6 +3,8 @@ Utilities to sample single instances or batches of SMILES subsequences.
 
 Classes
 -------
+BatchSampler
+    An ABC to check the validity of custom batch samplers.
 SMILESBatchSampler
     Generate batches of SMILES sequences using specified sampler.
 SMILESBatchColumnSampler
@@ -12,19 +14,23 @@ SMILESConsecutiveSampler
 """
 
 __all__ = (
+    'BatchSampler',
     'SMILESBatchSampler',
     'SMILESBatchColumnSampler',
     'SMILESConsecutiveSampler',
 )
 
 
+import abc
+import collections
 import dataclasses
 import random
+import warnings
 from typing import (
     Any, Callable, Generator, Iterator, List, Optional, Union, Tuple)
 
-from mxnet import context, nd, np
-from mxnet.gluon.data import BatchSampler, Sampler
+import mxnet as mx
+from mxnet import gluon
 
 from ..base import StateInitializerMixin, Token
 from .vocabulary import SMILESVocabulary
@@ -36,20 +42,110 @@ class Batch:
     - input token sequences of shape (batch size, time steps);
     - output token sequences of shape (batch size, time steps);
     - valid lengths of samples of shape (batch size,);
-    - a flag to (re-)initialize or keep the hidden states of the model being
-      trained.
+    - a flag to (re-)initialize or keep the hidden states of the model being trained.
     """
 
-    inputs: np.ndarray         # Input tokens.
-    outputs: np.ndarray        # Output tokens.
-    valid_lengths: np.ndarray  # The number of valid tokens in `outputs`.
-    init_state: bool = False   # Whether to (re-)initialize hidden states.
+    inputs: mx.np.ndarray         # Input tokens.
+    outputs: mx.np.ndarray        # Output tokens.
+    valid_lengths: mx.np.ndarray  # The number of valid tokens in `outputs`.
+    init_state: bool = False      # Whether to (re-)initialize hidden states.
 
     @property
     def shape(self) -> Tuple[int, ...]:
         """Return the shape of the mini-batch.
         """
         return self.inputs.shape
+
+    def as_in_ctx(self, ctx: mx.context.Context = mx.context.cpu()) -> 'Batch':
+        """Change the context of the mxnet.np.ndarray fields of the instance.
+
+        Parameters
+        ----------
+        ctx : mxnet.context.Context, default mxnet.context.cpu()
+            CPU or GPU.
+
+        Returns
+        -------
+        batch : Batch
+        """
+        return self.__class__(**{
+            key: (
+                value.as_in_ctx(ctx)
+                if isinstance(value, mx.np.ndarray)
+                else value
+            )
+            for key, value in dataclasses.asdict(self).items()
+        })
+
+
+class BatchSampler(metaclass=abc.ABCMeta):
+    """An ABC to check the validity of custom batch samplers.
+
+    Since some of our batch samplers do not inherit from gluon's BatchSampler, but
+    provide valid API, we cannot check API correspondence with
+    `isinstance(custom_sampler, mxnet.gluon.data.BatchSampler)` etc. Hence, we implement
+    a class method `__subclasshook__` for `isinstance(custom_sampler, BatchSampler)`
+    checks.
+
+    Notes
+    -----
+    One does not have to use this class as a superclass. This is rather a reminder of
+    the main batch sampler API, as well as a convenient type/instance checker.
+    """
+
+    @classmethod
+    def __subclasshook__(cls, other_class: type) -> bool:
+        """Check if `other_class` supports the main Batch Sampler API, i.e. implements
+        `__iter__`, `__len__`, and `init_states` methods.
+
+        Parameters
+        ----------
+        other_class : type
+            A class to check.
+
+        Returns
+        -------
+        bool
+            True, if `other_class` inherits mxnet.gluon.data.BatchSampler and
+            StateInitializerMixin, or if it supports their abstract methods.
+
+        Notes
+        -----
+        The behavior of the method is not inherited.
+        """
+        if cls is BatchSampler:
+            if (
+                issubclass(other_class, gluon.data.BatchSampler)
+                and issubclass(other_class, StateInitializerMixin)
+            ):
+                return True
+
+            attributes = collections.ChainMap(
+                *(superclass.__dict__ for superclass in other_class.__mro__)
+            )
+            methods = ('__iter__', '__len__', 'init_states', 'init_state_func')
+
+            return all(method in attributes for method in methods)
+
+        return NotImplemented
+
+    @abc.abstractmethod
+    def __iter__(self):
+        """Iterate over batches."""
+
+    @abc.abstractmethod
+    def __len__(self):
+        """Return the number of batches."""
+
+    @classmethod
+    @abc.abstractmethod
+    def init_states(cls, *args, **kwargs):
+        """See moleculegen.StateInitializerMixin for the description of the method."""
+
+    @staticmethod
+    @abc.abstractmethod
+    def init_state_func(*args, **kwargs):
+        """See moleculegen.StateInitializerMixin for the description of the method."""
 
 
 class SMILESBatchColumnSampler(StateInitializerMixin):
@@ -219,8 +315,13 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
         self.__n_steps = n_steps
 
     def __len__(self) -> int:
-        """Return the number of samples.
+        """Return the number of batches.
         """
+        warnings.warn(
+            'The iterator of `SMILESBatchColumnSampler` is inherently slow,\n'
+            'so is `__len__` method.'
+        )
+
         n_samples = 0
         for n_samples, _ in enumerate(iter(self), start=1):
             pass
@@ -256,7 +357,7 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
 
             yield from self._iter_steps(batch)
 
-    def _iter_steps(self, batch: np.ndarray) -> Generator[Batch, None, None]:
+    def _iter_steps(self, batch: mx.np.ndarray) -> Generator[Batch, None, None]:
         """Generate batches separated by time steps.
 
         Parameters
@@ -271,7 +372,7 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
             valid lengths.
         """
 
-        def get_valid_lengths(sample: np.ndarray) -> np.ndarray:
+        def get_valid_lengths(sample: mx.np.ndarray) -> mx.np.ndarray:
             """For every entry in `sample`, return the lengths of subsequences
             containing any valid SMILES tokens excluding padding token.
 
@@ -296,7 +397,7 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
                 else:
                     lengths.append(sample.shape[1])
 
-            return np.array(lengths, dtype=int)
+            return mx.np.array(lengths, dtype=int)
 
         pad_token_idx: int = self._vocabulary[Token.PAD]
 
@@ -316,7 +417,7 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
 
             h = False
 
-    def _pad(self, item_lists: List[List[int]]) -> np.ndarray:
+    def _pad(self, item_lists: List[List[int]]) -> mx.np.ndarray:
         """Get a batch of SMILES token lists and fill with the `PAD` token ids
         those lists with lesser number of tokens.
 
@@ -352,21 +453,19 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
             pad_list = [pad_token_idx] * pad_len
             new_items_list.append(item_list + pad_list)
 
-        return np.array(new_items_list, dtype=int)
+        return mx.np.array(new_items_list, dtype=int)
 
     @classmethod
     def init_states(
             cls,
             model: Any,
             mini_batch: Batch,
-            states: Optional[List[np.ndarray]] = None,
-            init_state_func: Optional[
-                Callable[[Any], nd.ndarray.NDArray]] = None,
-            ctx: context.Context = context.cpu(),
+            states: Optional[List[mx.np.ndarray]] = None,
+            init_state_func: Optional[Callable[[Any], mx.nd.ndarray.NDArray]] = None,
             detach: bool = False,
             *args,
             **kwargs,
-    ) -> List[np.ndarray]:
+    ) -> List[mx.np.ndarray]:
         """(Re-)initialize the hidden state(s) of `model`.
 
         Parameters
@@ -384,8 +483,6 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
             If None, the previous states will be returned.
             Recommended to use `StateInitializerMixin.init_state_func` method
             to declare this callable.
-        ctx : mxnet.context.Context, default mxnet.context.cpu()
-            CPU or GPU.
         detach : bool, default False
             Whether to detach `states` from the computational graph.
 
@@ -399,6 +496,10 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
         AttributeError
             If `mini_batch` does not have `shape` attribute.
             If `model` does not implement `begin_state` method.
+
+        Notes
+        -----
+        The context of the hidden states is the same as the `model`s context.
         """
         if mini_batch.init_state or states is None:
             states = super().init_states(
@@ -406,7 +507,6 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
                 mini_batch=mini_batch,
                 states=states,
                 init_state_func=init_state_func,
-                ctx=ctx,
             )
 
         if detach:
@@ -415,7 +515,7 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
         return states
 
 
-class SMILESBatchSampler(BatchSampler, StateInitializerMixin):
+class SMILESBatchSampler(gluon.data.BatchSampler, StateInitializerMixin):
     """Generate (mini-)batches of SMILES (sub)sequences. Extends
     mxnet.gluon.data.BatchSampler API by implementing `init_states` for state
     initialization.
@@ -438,9 +538,9 @@ class SMILESBatchSampler(BatchSampler, StateInitializerMixin):
     >>> for batch_i, batch in enumerate(batch_sampler, start=1):
     ...     print(f'Batch {batch_i}:')
     ...     for sample_i in range(batch.shape[0]):
-    ...         input_sample = batch.inputs[sample_i].tolist())
+    ...         input_sample = batch.inputs[sample_i].tolist()
     ...         output_sample = batch.outputs[sample_i].tolist()
-    ...         print(''.join(vocabulary.get_tokens(input_sample))
+    ...         print(''.join(vocabulary.get_tokens(input_sample)))
     ...         print(''.join(vocabulary.get_tokens(output_sample)))
     ...     print(f'Valid lengths: {batch.valid_lengths}.')
     ...     print()
@@ -476,19 +576,28 @@ class SMILESBatchSampler(BatchSampler, StateInitializerMixin):
     """
 
     def __iter__(self) -> Generator[Batch, None, None]:
+        """Run superclass' iterator and covert the yielded list of samples into Batch
+        instances.
+
+        Yields
+        ------
+        batch : Batch
+        """
+        batch_class = getattr(self._sampler, 'Batch', Batch)
+
         for batch in super().__iter__():
             inputs = (sample.inputs for sample in batch)
             outputs = (sample.outputs for sample in batch)
             valid_lengths = (sample.valid_length for sample in batch)
 
-            yield Batch(
-                inputs=np.array(list(inputs), dtype=int),
-                outputs=np.array(list(outputs), dtype=int),
-                valid_lengths=np.array(list(valid_lengths), dtype=int),
+            yield batch_class(
+                inputs=mx.np.array(list(inputs), dtype=int),
+                outputs=mx.np.array(list(outputs), dtype=int),
+                valid_lengths=mx.np.array(list(valid_lengths), dtype=int),
             )
 
 
-class SMILESConsecutiveSampler(Sampler):
+class SMILESConsecutiveSampler(gluon.data.Sampler):
     """Consecutively generate SMILES (sub)sequences of length `n_steps`,
     padding the lacking tokens if necessary. By default, the generated objects
     are of type Sample, which has attributes `inputs` (input sequences),

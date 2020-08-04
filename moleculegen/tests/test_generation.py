@@ -5,16 +5,13 @@ Test SMILES samplers.
 import unittest
 
 import mxnet as mx
-from mxnet import gluon
 
-from moleculegen import (
-    SMILESRNNModel,
-    Token,
-)
+from moleculegen import Token
 from moleculegen.data import (
     SMILESDataset,
     SMILESVocabulary,
 )
+from moleculegen.estimation import SMILESEncoderDecoder
 from moleculegen.generation import GreedySearch
 from moleculegen.tests.utils import TempSMILESFile
 
@@ -28,14 +25,7 @@ class GreedySearchTestCase(unittest.TestCase):
         dataset = SMILESDataset(self.fh.name)
         self.vocabulary = SMILESVocabulary(dataset, need_corpus=True)
 
-        embedding_layer = gluon.nn.Embedding(len(self.vocabulary), 4)
-        rnn_layer = gluon.rnn.LSTM(hidden_size=16, num_layers=1)
-        dense_layer = gluon.nn.Dense(len(self.vocabulary), flatten=True)
-        self.model = SMILESRNNModel(
-            embedding_layer=embedding_layer,
-            rnn_layer=rnn_layer,
-            dense_layer=dense_layer,
-        )
+        self.model = SMILESEncoderDecoder(len(self.vocabulary))
 
         self.predictor = GreedySearch()
 

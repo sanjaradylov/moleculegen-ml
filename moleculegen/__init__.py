@@ -9,27 +9,27 @@ __version__ = 'beta'
 
 __all__ = (
     # Modules.
+    'callback',
     'data',
     'description',
+    'estimation',
     'evaluation',
     'generation',
 
     # Classes.
-    'SMILESRNNModel',
     'StateInitializerMixin',
     'Token',
 )
 
 
+from . import callback
 from . import data
 from . import description
+from . import estimation
 from . import evaluation
 from . import generation
 
 from .base import (
     StateInitializerMixin,
     Token,
-)
-from .model import (
-    SMILESRNNModel,
 )
