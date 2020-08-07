@@ -5,11 +5,13 @@ Test losses and metrics.
 import unittest
 
 from mxnet import np, npx
+from rdkit.RDLogger import DisableLog
 
 from moleculegen.evaluation import (
     get_mask_for_loss,
     MaskedSoftmaxCELoss,
     Perplexity,
+    RAC,
 )
 
 
@@ -48,6 +50,62 @@ class MaskedSoftmaxCELossTestCase(unittest.TestCase):
         ))
 
 
+class RUACTestCase(unittest.TestCase):
+    def setUp(self):
+        self.rac = RAC(count_unique=False)
+        self.ruac = RAC(name='RUAC', count_unique=True)
+
+        self.predictions = [
+            # Invalid:
+            '(((((',
+            # Unique but duplicates:
+            'N#N',
+            'N#N',
+            # Presented in `self.labels`:
+            'CN=C=O',
+            # Unique:
+            '[Cu+2].[O-]S(=O)(=O)[O-]',
+        ]
+        self.labels = [
+            'CN=C=O',
+            'CN1CCC[C@H]1c2cccnc2',
+            'CC[C@H](O1)CC[C@@]12CCCO2',
+            'CN1CCC[C@H]1c2cccnc2',
+            'CC(C)[C@@]12C[C@@H]1[C@@H](C)C(=O)C2',
+            'OCCc1c(C)[n+](cs1)Cc2cnc(C)nc2N',
+        ]
+
+    def test_1_rac_without_labels(self):
+        self.rac.update(predictions=self.predictions, labels=None)
+        name, result = self.rac.get()
+        self.rac.reset()
+
+        self.assertEqual('RAC', name)
+        self.assertEqual(result, 4/5)
+
+    def test_2_rac_with_labels(self):
+        self.rac.update(predictions=self.predictions, labels=self.labels)
+        _, result = self.rac.get()
+        self.rac.reset()
+
+        self.assertEqual(result, 3/5)
+
+    def test_3_ruac_without_labels(self):
+        self.ruac.update(predictions=self.predictions, labels=None)
+        name, result = self.ruac.get()
+        self.ruac.reset()
+
+        self.assertEqual('RUAC', name)
+        self.assertEqual(result, 3/5)
+
+    def test_4_ruac_with_labels(self):
+        self.ruac.update(predictions=self.predictions, labels=self.labels)
+        _, result = self.ruac.get()
+        self.ruac.reset()
+
+        self.assertEqual(result, 2/5)
+
+
 class PerplexityTestCase(unittest.TestCase):
     def setUp(self):
         self.predictions = np.array([
@@ -72,5 +130,6 @@ class PerplexityTestCase(unittest.TestCase):
 
 
 if __name__ == '__main__':
+    DisableLog('rdApp.*')
     npx.set_np()
     unittest.main()
