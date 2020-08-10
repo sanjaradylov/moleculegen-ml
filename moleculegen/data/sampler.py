@@ -507,6 +507,7 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
                 mini_batch=mini_batch,
                 states=states,
                 init_state_func=init_state_func,
+                detach=detach,
             )
 
         if detach:

@@ -13,6 +13,7 @@ from typing import Optional
 
 import mxnet as mx
 from mxnet import gluon
+from rdkit.RDLogger import DisableLog
 
 import moleculegen as mg
 
@@ -121,7 +122,7 @@ def main():
     batch_sampler = mg.data.SMILESBatchSampler(
         sequence_sampler,
         batch_size=options.batch_size,
-        last_batch='discard',
+        last_batch='rollover',
     )
 
     ctx_map = {
@@ -135,8 +136,8 @@ def main():
         embedding_dim=32,
         n_rnn_layers=options.n_layers,
         n_rnn_units=options.hidden_size,
-        rnn_dropout=0.4,
-        dense_dropout=0.1,
+        rnn_dropout=0.5,
+        dense_dropout=0.25,
         ctx=ctx,
     )
 
@@ -146,13 +147,28 @@ def main():
         base_lr=options.learning_rate,
         step=len(batch_sampler),
     )
-    optimizer = mx.optimizer.FTML(
+    optimizer = mx.optimizer.Adam(
         learning_rate=options.learning_rate,
-        # clip_gradient=options.grad_clip_length,
+        clip_gradient=options.grad_clip_length,
         lr_scheduler=lr_scheduler,
     )
     loss_fn = gluon.loss.SoftmaxCELoss()
-    callbacks = [mg.callback.ProgressBar()]
+    callbacks = [
+        mg.callback.BatchMetricScorer(
+            metrics=[
+                mg.evaluation.Perplexity(ignore_label=0),
+            ]
+        ),
+        mg.callback.EpochMetricScorer(
+            metrics=[
+                mg.evaluation.RAC(name='RUAC', count_unique=True),
+            ],
+            predictor=mg.generation.GreedySearch(ctx=lambda array: array.as_in_ctx(ctx)),
+            vocabulary=vocabulary,
+            train_dataset=[mg.Token.crop(smiles) for smiles in dataset],
+        ),
+        mg.callback.ProgressBar(),
+    ]
 
     model.fit(
         batch_sampler=batch_sampler,
@@ -279,7 +295,7 @@ def process_options() -> argparse.Namespace:
         '-s', '--n_steps',
         help='The number of time steps.',
         type=PositiveInteger,
-        default=32,
+        default=64,
     )
     fit_options.add_argument(
         '-l', '--learning_rate',
@@ -297,7 +313,7 @@ def process_options() -> argparse.Namespace:
         '-g', '--grad_clip_length',
         help="The radius by which a gradient's length is constrained.",
         type=float,
-        default=16.0,
+        default=8.0,
     )
 
     log_options = parser.add_argument_group('logging options')
@@ -354,5 +370,6 @@ def process_options() -> argparse.Namespace:
 
 
 if __name__ == '__main__':
+    DisableLog('rdApp.*')
     mx.npx.set_np()
     main()

@@ -306,7 +306,9 @@ class SMILESEncoderDecoder(gluon.Block):
             'epoch': 0,
         }
         # The named arguments required by callbacks on batch calls.
-        train_params = dict.fromkeys(['batch_no', 'batch', 'loss'])
+        train_params = dict.fromkeys([
+            'batch_no', 'batch', 'loss', 'predictions', 'outputs'
+        ])
         callbacks = callbacks or []
 
         try:
@@ -329,7 +331,6 @@ class SMILESEncoderDecoder(gluon.Block):
                         mini_batch=batch,
                         states=states,
                         init_state_func=state_func,
-                        detach=True,
                     )
 
                     train_params['batch_no'] = batch_no
@@ -346,6 +347,8 @@ class SMILESEncoderDecoder(gluon.Block):
                     trainer.step(batch.valid_lengths.sum())
 
                     train_params['loss'] = loss
+                    train_params['predictions'] = predictions
+                    train_params['outputs'] = batch.outputs
                     for callback in callbacks:
                         callback.on_batch_end(**init_params, **train_params)
 
