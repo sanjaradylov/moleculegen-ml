@@ -3,9 +3,17 @@ The collection of callbacks.
 
 Classes
 -------
+EpochMetricScorer
+    Calculate and log metrics at the end of every epoch.
 ProgressBar
     Print progress bar every epoch of model training.
 """
+
+__all__ = (
+    'EpochMetricScorer',
+    'ProgressBar',
+)
+
 
 import collections
 import datetime
@@ -13,9 +21,102 @@ import math
 import statistics
 import sys
 import time
-from typing import Deque, List, Optional
+from typing import Deque, List, Optional, Sequence
+
+import mxnet as mx
 
 from .base import Callback
+from ..base import Token
+from ..data.vocabulary import SMILESVocabulary
+from ..estimation.model import SMILESEncoderDecoder
+from ..evaluation.metric import Metric
+from ..generation.greedy_search import GreedySearch
+
+
+class BatchMetricScorer(Callback):
+    """Calculate and log metrics after batch sampling and forward computation. Average
+    the results at the end of every epoch.
+    Use for "predictions-outputs" based metrics, e.g. Perplexity.
+
+    Parameters
+    ----------
+    metrics : sequence of mxnet.metric.EvalMetric
+        The metrics to calculate during mini-batch sampling and average at the end
+        of an epoch.
+    """
+
+    def __init__(self, metrics: Sequence[mx.metric.EvalMetric]):
+        self.__batch_metrics = metrics
+
+
+class EpochMetricScorer(Callback):
+    """Calculate and log metrics at the end of every epoch.
+    Use for distribution-based metrics, e.g. RAC.
+
+    Parameters
+    ----------
+    metrics : sequence of Metric
+        The metrics to calculate at the end of an epoch on a set of generated
+        compounds (e.g. RAC).
+    predictor : GreedySearch
+        A SMILES string predictor.
+    vocabulary : SMILESVocabulary
+        The vocabulary to encode-decode tokens.
+    prefix : str, default: Token.BOS
+        The prefix of a SMILES string to generate
+    max_length : int, default: 80
+        The maximum number of tokens to generate.
+    n_predictions : int, default 10000
+        The number of SMILES strings to generate.
+    train_dataset : sequence of str, default None
+        A dataset to compare the generated compounds with.
+    """
+
+    def __init__(
+            self,
+            metrics: Sequence[Metric],
+            predictor: GreedySearch,
+            vocabulary: SMILESVocabulary,
+            prefix: str = Token.BOS,
+            max_length: int = 80,
+            n_predictions: int = 1000,
+            train_dataset: Optional[Sequence[str]] = None,
+    ):
+        self.__metrics = metrics
+        self.__predictor = predictor
+        self.__predictor_kwargs = {
+            'vocabulary': vocabulary,
+            'prefix': prefix,
+            'max_length': max_length,
+        }
+        self.__n_predictions = n_predictions
+        self.__train_dataset = train_dataset
+
+    def on_epoch_end(self, **fit_kwargs):
+        """Score and log every metric.
+
+        Parameters
+        ----------
+        Expected named arguments:
+            - model
+        """
+        sys.stdout.write('\nCalculating metrics...\t')
+
+        model: SMILESEncoderDecoder = fit_kwargs.get('model')
+
+        for metric in self.__metrics:
+
+            for _ in range(self.__n_predictions):
+                states = model.begin_state(batch_size=1)
+                smiles = self.__predictor(
+                    model=model,
+                    states=states,
+                    **self.__predictor_kwargs,
+                )
+                metric.update(predictions=[smiles], labels=self.__train_dataset)
+
+            name, result = metric.get()
+            sys.stdout.write(f'{name}: {result:.3f}  ')
 
 
 class ProgressBar(Callback):
