@@ -220,8 +220,8 @@ class StateInitializerMixin:
             model: Any,
             mini_batch: Any,
             states: Optional[List[np.ndarray]] = None,
-            init_state_func: Optional[
-                Callable[[Any], nd.ndarray.NDArray]] = None,
+            detach: bool = True,
+            init_state_func: Optional[Callable[[Any], nd.ndarray.NDArray]] = None,
             *args,
             **kwargs,
     ) -> List[np.ndarray]:
@@ -236,6 +236,8 @@ class StateInitializerMixin:
         states : list of mxnet.nd.ndarray.NDArray, default None
             The previous hidden states of `model`.
             If None, then a new state list will be initialized.
+        detach : bool, default True
+            Whether to detach the sates from the computational graph.
         init_state_func : callable, any -> mxnet.nd.ndarray.NDArray,
                 default None
             A distribution function to initialize `states`.
@@ -272,6 +274,9 @@ class StateInitializerMixin:
                 batch_size=mini_batch.shape[0],
                 func=init_state_func,
             )
+
+        if detach:
+            states = [state.detach() for state in states]
 
         return states
 

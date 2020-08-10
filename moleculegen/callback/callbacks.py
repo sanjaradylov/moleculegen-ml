@@ -3,6 +3,8 @@ The collection of callbacks.
 
 Classes
 -------
+BatchMetricScorer
+    Calculate and log metrics after batch sampling and forward computation.
 EpochMetricScorer
     Calculate and log metrics at the end of every epoch.
 ProgressBar
@@ -10,6 +12,7 @@ ProgressBar
 """
 
 __all__ = (
+    'BatchMetricScorer',
     'EpochMetricScorer',
     'ProgressBar',
 )
@@ -46,7 +49,36 @@ class BatchMetricScorer(Callback):
     """
 
     def __init__(self, metrics: Sequence[mx.metric.EvalMetric]):
-        self.__batch_metrics = metrics
+        self.__metrics = metrics
+
+    def on_epoch_begin(self, **fit_kwargs):
+        """Initialize/Reset internal states of the metrics.
+        """
+        for metric in self.__metrics:
+            metric.reset()
+
+    def on_batch_end(self, **fit_kwargs):
+        """Get labels and predictions to score metrics.
+
+        Parameters
+        ----------
+        Expected named arguments:
+            - predictions
+            - outputs
+        """
+        predictions = fit_kwargs.get('predictions')
+        outputs = fit_kwargs.get('outputs')
+
+        for metric in self.__metrics:
+            metric.update(labels=outputs, preds=predictions)
+
+    def on_epoch_end(self, **fit_kwargs):
+        """Calculate and log average scores.
+        """
+        sys.stdout.write('\nCalculating metrics...\t')
+        for metric in self.__metrics:
+            name, result = metric.get()
+            sys.stdout.write(f'{name}: {result:.3f}  ')
 
 
 class EpochMetricScorer(Callback):
@@ -91,6 +123,12 @@ class EpochMetricScorer(Callback):
         }
         self.__n_predictions = n_predictions
         self.__train_dataset = train_dataset
+
+    def on_epoch_begin(self, **fit_kwargs):
+        """Initialize/Reset internal states of the metrics.
+        """
+        for metric in self.__metrics:
+            metric.reset()
 
     def on_epoch_end(self, **fit_kwargs):
         """Score and log every metric.

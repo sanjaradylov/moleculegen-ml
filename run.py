@@ -154,6 +154,11 @@ def main():
     )
     loss_fn = gluon.loss.SoftmaxCELoss()
     callbacks = [
+        mg.callback.BatchMetricScorer(
+            metrics=[
+                mg.evaluation.Perplexity(ignore_label=0),
+            ]
+        ),
         mg.callback.EpochMetricScorer(
             metrics=[
                 mg.evaluation.RAC(name='RUAC', count_unique=True),

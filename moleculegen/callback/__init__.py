@@ -6,6 +6,8 @@ Classes
 Callback
     Callback ABC.
 
+BatchMetricScorer
+    Calculate and log metrics after batch sampling and forward computation.
 EpochMetricScorer
     Calculate and log metrics at the end of every epoch.
 ProgressBar
@@ -13,6 +15,7 @@ ProgressBar
 """
 
 __all__ = (
+    'BatchMetricScorer',
     'Callback',
     'EpochMetricScorer',
     'ProgressBar',
@@ -21,6 +24,7 @@ __all__ = (
 
 from .base import Callback
 from .callbacks import (
+    BatchMetricScorer,
     EpochMetricScorer,
     ProgressBar,
 )

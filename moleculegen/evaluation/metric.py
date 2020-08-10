@@ -21,10 +21,10 @@ __all__ = (
 
 import abc
 from numbers import Real
-from typing import Any, List, Optional, Sequence, Tuple, Union
+from typing import Any, List, Optional, Tuple
 
+import mxnet as mx
 from rdkit.Chem import MolFromSmiles
-from mxnet import metric, np
 
 
 class Metric(metaclass=abc.ABCMeta):
@@ -162,48 +162,74 @@ class RAC(Metric):
         return result, n_samples
 
 
-class Perplexity(metric.Perplexity):
+class Perplexity(mx.metric.Perplexity):
     """Re-implementation of mxnet.metrics.Perplexity, which supports Numpy
     ndarray. See the documentation for more information.
     """
 
+    def __init__(
+            self,
+            from_probabilities: bool = False,
+            ignore_label: Optional[int] = None,
+            axis=-1,
+            name='Perplexity',
+            output_names=None,
+            label_names=None,
+    ):
+        super().__init__(
+            ignore_label=ignore_label,
+            axis=axis,
+            name=name,
+            output_names=output_names,
+            label_names=label_names,
+        )
+
+        self._from_probabilities = from_probabilities
+
     def update(
             self,
-            labels: Union[np.ndarray, Sequence[np.ndarray]],
-            predictions: Union[np.ndarray, Sequence[np.ndarray]],
+            labels: mx.np.ndarray,
+            preds: mx.np.ndarray,
     ):
         """Updates the internal evaluation result.
 
         Parameters
         ----------
-        labels : sequence of mxnet.np.ndarray
+        labels : mxnet.np.ndarray, shape = (time steps,) or (batch size, time steps)
             The labels of the data.
 
-        predictions : sequence of mxnet.np.ndarray
+        preds : mxnet.np.ndarray, shape = (time steps, vocabulary size) or
+                (batch size, time steps, vocabulary size)
             Predicted values.
 
         See the documentation for more information.
         """
-        if len(labels) != len(predictions):
-            raise ValueError(
-                f"Labels vs. Predictions size mismatch: "
-                f"{len(labels)} vs. {len(predictions)}"
-            )
+        # If predictions and labels are given as mini-batches of shape
+        # (batch size, time steps, vocabulary dim)
+        if preds.ndim == 3 and labels.ndim == 2:
+            preds = preds.reshape(-1, preds.shape[-1])
+            labels = labels.reshape(-1)
 
-        loss = 0.0
-        num = 0
-
-        for label, prediction in zip(labels, predictions):
-            probability = prediction[label.astype(np.int32).item()]
-            if self.ignore_label is not None:
-                ignore = (label == self.ignore_label).astype(prediction.dtype)
-                num -= ignore.astype(np.int32).item()
-                probability = probability * (1 - ignore) + ignore
+        if not self._from_probabilities:
             # noinspection PyUnresolvedReferences
-            loss -= np.sum(np.log(np.maximum(1e-10, probability))).item()
-            num += 1
+            preds = mx.npx.softmax(preds)
 
-        self.sum_metric += loss
-        self.global_sum_metric += loss
-        self.num_inst += num
-        self.global_num_inst += num
+        score = 0.0
+        n_instances = 0
+
+        # noinspection PyUnresolvedReferences
+        pick_preds = mx.npx.pick(preds, labels, axis=self.axis)
+
+        if self.ignore_label is not None:
+            ignore_mask = (labels == self.ignore_label).astype(pick_preds.dtype)
+            pick_preds[:] = pick_preds * (1 - ignore_mask) + ignore_mask
+            n_instances -= ignore_mask.sum().astype(mx.np.int32)
+
+        # noinspection PyUnresolvedReferences
+        score -= mx.np.sum(mx.np.log(mx.np.maximum(1e-7, pick_preds))).item()
+        n_instances += pick_preds.shape[0]
+
+        self.sum_metric += score
+        self.global_sum_metric += score
+        self.num_inst += n_instances
+        self.global_num_inst += n_instances
