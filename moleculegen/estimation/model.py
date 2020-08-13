@@ -24,7 +24,7 @@ from ..description.common import OneHotEncoder
 from ..evaluation.loss import get_mask_for_loss
 
 
-class SMILESEncoderDecoder(gluon.Block):
+class SMILESEncoderDecoder(gluon.HybridBlock):
     """A generative recurrent neural network to encode-decode SMILES strings.
 
     Parameters
@@ -239,8 +239,10 @@ class SMILESEncoderDecoder(gluon.Block):
         return self._encoder.begin_state(
             batch_size=batch_size, func=func, ctx=self.ctx, **func_kwargs)
 
-    def forward(
+    # noinspection PyMethodOverriding
+    def hybrid_forward(
             self,
+            module,
             inputs: mx.np.ndarray,
             states: List[mx.np.ndarray],
     ) -> Tuple[mx.np.ndarray, List[mx.np.ndarray]]:
@@ -248,6 +250,8 @@ class SMILESEncoderDecoder(gluon.Block):
 
         Parameters
         ----------
+        module : mxnet.ndarray or mxnet.symbol
+            We ignore the model.
         inputs : mxnet.np.ndarray,
                 shape = (batch size, time steps)
             Input samples.
@@ -312,6 +316,8 @@ class SMILESEncoderDecoder(gluon.Block):
         callbacks = callbacks or []
 
         try:
+            self.hybridize()
+
             trainer = gluon.Trainer(self.collect_params(), optimizer)
             state_func: Callable = batch_sampler.init_state_func()
 

@@ -24,9 +24,9 @@ def dropout_mlp(
         dropout: float,
         **kwargs,
 ) -> gluon.Block:
-    """A dropout-regularized MLP built with mxnet.gluon.nn.Sequential.
+    """A dropout-regularized MLP built with mxnet.gluon.nn.HybridSequential.
     """
-    net = gluon.nn.Sequential()
+    net = gluon.nn.HybridSequential()
 
     for _ in range(n_layers-1):
         net.add(gluon.nn.Dropout(dropout))
@@ -55,7 +55,7 @@ def mlp(
         dtype: str,
         **kwargs,
 ) -> gluon.Block:
-    """A single dense layer or an MLP built with mxnet.gluon.nn.Sequential.
+    """A single dense layer or an MLP built with mxnet.gluon.nn.HybridSequential.
     """
     output_dense = gluon.nn.Dense(
         units=output_dim,
@@ -66,7 +66,7 @@ def mlp(
     if n_layers == 1:
         return output_dense
 
-    net = gluon.nn.Sequential()
+    net = gluon.nn.HybridSequential()
 
     for _ in range(n_layers-1):
         net.add(gluon.nn.Dense(
