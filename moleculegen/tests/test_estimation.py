@@ -49,16 +49,17 @@ class SMILESEncoderDecoderTestCase(unittest.TestCase):
             dense_dropout=0.0,
             dense_init=mx.init.Xavier(),
             dtype='float32',
+            prefix='model_'
         )
 
     def test_1_params(self):
         param_names = (
-            'embedding0_weight',
+            'model_embedding_weight',
 
-            'lstm0_l0_i2h_weight', 'lstm0_l0_h2h_weight',
-            'lstm0_l0_i2h_bias', 'lstm0_l0_h2h_bias',
+            'model_encoder_l0_i2h_weight', 'model_encoder_l0_h2h_weight',
+            'model_encoder_l0_i2h_bias', 'model_encoder_l0_h2h_bias',
 
-            'dense0_weight', 'dense0_bias',
+            'model_decoder_weight', 'model_decoder_bias',
         )
 
         for actual_p, test_p in zip(param_names, self.model.collect_params()):
