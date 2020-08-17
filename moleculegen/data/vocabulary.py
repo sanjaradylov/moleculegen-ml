@@ -26,6 +26,7 @@ from typing import Counter, Dict, Generator, List, Optional, Sequence, Union
 from mxnet.gluon.data import SimpleDataset
 
 from ..base import Token
+from .loader import SMILESDataset
 
 
 class SMILESVocabulary:
@@ -62,6 +63,12 @@ class SMILESVocabulary:
     corpus : list
         Original data set corpus. Accessible only if corpus is needed.
     """
+
+    # Special token IDs.
+    UNK_ID = -1
+    PAD_ID = 0
+    BOS_ID = 1
+    EOS_ID = 2
 
     def __init__(
             self,
@@ -188,13 +195,11 @@ class SMILESVocabulary:
         KeyError
             When `tokens` are of unsupported type.
         """
-        unknown_idx = len(self)
-
         if isinstance(tokens, str):
-            return self._token_to_idx.get(tokens, unknown_idx)
+            return self._token_to_idx.get(tokens, self.UNK_ID)
         elif isinstance(tokens, (list, tuple)):
             return [
-                self._token_to_idx.get(token, unknown_idx)
+                self._token_to_idx.get(token, self.UNK_ID)
                 for token in tokens
             ]
         else:
@@ -202,6 +207,26 @@ class SMILESVocabulary:
                 f"`tokens` must be of type str or list/tuple of str, "
                 f"not {type(tokens)}."
             )
+
+    def get_token_id_corpus(self, dataset: SMILESDataset) -> List[List[int]]:
+        """Transform the sequence of SMILES strings `dataset` into a list of token ID
+        lists.
+
+        Parameters
+        ----------
+        dataset : SMILESDataset
+            SMILES strings.
+
+        Returns
+        -------
+        corpus : list of list of int
+        """
+        tokens: Generator[List[str], None, None] = (
+            Token.tokenize(sample) for sample in dataset
+        )
+        corpus: List[List[int]] = [self.__getitem__(line) for line in tokens]
+
+        return corpus
 
     @property
     def corpus(self) -> List[List[int]]:

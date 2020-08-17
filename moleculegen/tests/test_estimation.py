@@ -23,9 +23,9 @@ class SMILESEncoderDecoderTestCase(unittest.TestCase):
         self.fh = temp_file.open()
 
         dataset = SMILESDataset(self.fh.name)
-        vocabulary = SMILESVocabulary(dataset, need_corpus=True)
+        self.vocabulary = SMILESVocabulary(dataset, need_corpus=True)
         self.batch_sampler = SMILESBatchColumnSampler(
-            vocabulary=vocabulary,
+            corpus=self.vocabulary.corpus,
             batch_size=3,
             n_steps=8,
         )
@@ -34,7 +34,7 @@ class SMILESEncoderDecoderTestCase(unittest.TestCase):
         self.n_rnn_units = 32  # Used in output/state shape testing.
 
         self.model = SMILESEncoderDecoder(
-            len(vocabulary),
+            len(self.vocabulary),
             use_one_hot=False,
             embedding_dim=4,
             embedding_init=mx.init.Orthogonal(),
@@ -74,7 +74,7 @@ class SMILESEncoderDecoderTestCase(unittest.TestCase):
             (
                 self.batch_sampler.batch_size,
                 self.batch_sampler.n_steps,
-                len(self.batch_sampler.vocabulary),
+                len(self.vocabulary),
             ),
             outputs.shape,
         )
@@ -92,6 +92,7 @@ class SMILESEncoderDecoderTestCase(unittest.TestCase):
         that training progresses.
         """
         callbacks = [ProgressBar()]
+        # noinspection PyTypeChecker
         self.model.fit(
             batch_sampler=self.batch_sampler,
             optimizer=mx.optimizer.Adam(learning_rate=0.005),

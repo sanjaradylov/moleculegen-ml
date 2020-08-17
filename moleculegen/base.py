@@ -51,7 +51,7 @@ class Token:
 
     # Subcompounds.
     AGGREGATE = frozenset([
-        '[nH]', '[C@H]', '[C@@H]', '(=O)', '@@'
+        '[nH]', '[C@H]', '[C@@H]', '@@'
     ])
 
     # Special tokens not presented in the SMILES vocabulary.
