@@ -32,7 +32,7 @@ from typing import (
 import mxnet as mx
 from mxnet import gluon
 
-from ..base import StateInitializerMixin, Token
+from ..base import StateInitializerMixin
 from .vocabulary import SMILESVocabulary
 
 
@@ -156,8 +156,8 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
 
     Parameters
     ----------
-    vocabulary : SMILESVocabulary
-        The vocabulary of the original data corpus.
+    corpus : list of list of int
+        The original data corpus loaded from a vocabulary.
     batch_size : int
         The number of samples to generate.
     n_steps : int
@@ -167,7 +167,7 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
 
     Attributes
     ----------
-    vocabulary : SMILESVocabulary
+    corpus : list of list of int
     batch_size : int
     n_steps : int
 
@@ -184,7 +184,7 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
     >>> with TempSMILESFile(smiles_strings=smiles_strings) as temp_fh:
     ...     dataset = SMILESDataset(temp_fh.file_handler.name)
     >>> vocabulary = SMILESVocabulary(dataset, need_corpus=True)
-    >>> sampler = SMILESBatchColumnSampler(vocabulary, 2, 20, shuffle=False)
+    >>> sampler = SMILESBatchColumnSampler(vocabulary.corpus, 2, 20, shuffle=False)
     >>> print('Input batch samples:')
     >>> for i, batch in enumerate(sampler, start=1):
     ...     print(f'Batch #{i}')
@@ -247,26 +247,26 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
 
     def __init__(
             self,
-            vocabulary: SMILESVocabulary,
+            corpus: List[List[int]],
             batch_size: int,
             n_steps: int,
             shuffle: bool = True,
     ):
-        self._vocabulary = vocabulary
+        self._corpus = corpus
         self._shuffle = shuffle
 
         self.batch_size = batch_size
         self.n_steps = n_steps
 
     @property
-    def vocabulary(self) -> SMILESVocabulary:
+    def corpus(self) -> List[List[int]]:
         """The corpus of the original data set.
 
         Returns
         -------
-        vocabulary : SMILESVocabulary
+        corpus : list of list of int
         """
-        return self._vocabulary
+        return self._corpus
 
     @property
     def batch_size(self) -> int:
@@ -344,16 +344,16 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
             valid lengths.
         """
         if self._shuffle:
-            random.shuffle(self._vocabulary.corpus)
+            random.shuffle(self._corpus)
 
         n_batches = (
-            len(self._vocabulary.corpus) // self.batch_size
+            len(self._corpus) // self.batch_size
             * self.batch_size
         )
 
         for i_batch in range(0, n_batches, self.batch_size):
             curr_slice = slice(i_batch, i_batch + self.batch_size)
-            batch = self._pad(self._vocabulary.corpus[curr_slice])
+            batch = self._pad(self._corpus[curr_slice])
 
             yield from self._iter_steps(batch)
 
@@ -399,7 +399,7 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
 
             return mx.np.array(lengths, dtype=int)
 
-        pad_token_idx: int = self._vocabulary[Token.PAD]
+        pad_token_idx = SMILESVocabulary.PAD_ID
 
         inputs, outputs = batch[:, :-1], batch[:, 1:]
 
@@ -445,7 +445,7 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
         # (batch[:, :-1], batch[:, 1:]).
         max_len += 1
 
-        pad_token_idx: int = self._vocabulary[Token.PAD]
+        pad_token_idx = SMILESVocabulary.PAD_ID
         new_items_list: List[List[int]] = []
 
         for item_list in item_lists:
@@ -534,7 +534,7 @@ class SMILESBatchSampler(gluon.data.BatchSampler, StateInitializerMixin):
     >>> with TempSMILESFile(smiles_strings=smiles_strings) as temp_fh:
     ...     dataset = SMILESDataset(temp_fh.file_handler.name)
     >>> vocabulary = SMILESVocabulary(dataset, need_corpus=True)
-    >>> sampler = SMILESConsecutiveSampler(vocabulary, 20, shuffle=False)
+    >>> sampler = SMILESConsecutiveSampler(vocabulary.corpus, 20, shuffle=False)
     >>> batch_sampler = SMILESBatchSampler(sampler, 2)
     >>> for batch_i, batch in enumerate(batch_sampler, start=1):
     ...     print(f'Batch {batch_i}:')
@@ -610,8 +610,8 @@ class SMILESConsecutiveSampler(gluon.data.Sampler):
 
     Parameters
     ----------
-    vocabulary : SMILESVocabulary
-        The SMILES vocabulary containing the loaded corpus.
+    corpus : list of list of int
+        The original data corpus loaded from a vocabulary.
     n_steps : int, default None
         The length of a substring.
         If None, it equals to the maximum string length in the corpus minus 1.
@@ -636,7 +636,7 @@ class SMILESConsecutiveSampler(gluon.data.Sampler):
     >>> with TempSMILESFile(smiles_strings=smiles_string) as temp_fh:
     ...     dataset = SMILESDataset(temp_fh.file_handler.name)
     >>> vocabulary = SMILESVocabulary(dataset, need_corpus=True)
-    >>> sampler = SMILESConsecutiveSampler(vocabulary, n_steps=20)
+    >>> sampler = SMILESConsecutiveSampler(vocabulary.corpus, n_steps=20)
     >>> len(sampler)
     2
     >>> for sample in sampler:
@@ -659,15 +659,15 @@ class SMILESConsecutiveSampler(gluon.data.Sampler):
 
     def __init__(
             self,
-            vocabulary: SMILESVocabulary,
+            corpus: List[List[int]],
             n_steps: Optional[int] = None,
             shuffle: bool = True,
             *,
             sample_type: str = 'sample',
     ):
-        self._vocabulary = vocabulary
+        self._corpus = corpus
         self._shuffle = shuffle
-        self._n_steps = n_steps or max(map(len, self._vocabulary.corpus))
+        self._n_steps = n_steps or max(map(len, self._corpus))
 
         if sample_type == 'sample':
             self._sample_type = lambda inputs, outputs, valid_length: \
@@ -700,10 +700,10 @@ class SMILESConsecutiveSampler(gluon.data.Sampler):
             Input-output sequences.
         """
         if self._shuffle:
-            random.shuffle(self._vocabulary.corpus)
+            random.shuffle(self._corpus)
 
         # Iterate over the corpus of SMILES token indices.
-        for tokens in self._vocabulary.corpus:
+        for tokens in self._corpus:
             step_i = 0  # Starting index of a subsequence.
             step_len = step_i + self._n_steps  # Ending index.
 
@@ -723,7 +723,7 @@ class SMILESConsecutiveSampler(gluon.data.Sampler):
             remainder_len = step_len - len(tokens) + 1
             if remainder_len > 0 and remainder_len != self._n_steps:
                 # fill the lacking tokens with Token.PAD index.
-                pad = [self._vocabulary[Token.PAD]]
+                pad = [SMILESVocabulary.PAD_ID]
 
                 yield self._sample_type(
                     tokens[step_i: step_len] + pad*(remainder_len-1),

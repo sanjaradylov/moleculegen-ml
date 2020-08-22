@@ -23,9 +23,9 @@ class SMILESEncoderDecoderTestCase(unittest.TestCase):
         self.fh = temp_file.open()
 
         dataset = SMILESDataset(self.fh.name)
-        vocabulary = SMILESVocabulary(dataset, need_corpus=True)
+        self.vocabulary = SMILESVocabulary(dataset, need_corpus=True)
         self.batch_sampler = SMILESBatchColumnSampler(
-            vocabulary=vocabulary,
+            corpus=self.vocabulary.corpus,
             batch_size=3,
             n_steps=8,
         )
@@ -34,7 +34,7 @@ class SMILESEncoderDecoderTestCase(unittest.TestCase):
         self.n_rnn_units = 32  # Used in output/state shape testing.
 
         self.model = SMILESEncoderDecoder(
-            len(vocabulary),
+            len(self.vocabulary),
             use_one_hot=False,
             embedding_dim=4,
             embedding_init=mx.init.Orthogonal(),
@@ -49,16 +49,17 @@ class SMILESEncoderDecoderTestCase(unittest.TestCase):
             dense_dropout=0.0,
             dense_init=mx.init.Xavier(),
             dtype='float32',
+            prefix='model_'
         )
 
     def test_1_params(self):
         param_names = (
-            'embedding0_weight',
+            'model_embedding_weight',
 
-            'lstm0_l0_i2h_weight', 'lstm0_l0_h2h_weight',
-            'lstm0_l0_i2h_bias', 'lstm0_l0_h2h_bias',
+            'model_encoder_l0_i2h_weight', 'model_encoder_l0_h2h_weight',
+            'model_encoder_l0_i2h_bias', 'model_encoder_l0_h2h_bias',
 
-            'dense0_weight', 'dense0_bias',
+            'model_decoder_weight', 'model_decoder_bias',
         )
 
         for actual_p, test_p in zip(param_names, self.model.collect_params()):
@@ -73,7 +74,7 @@ class SMILESEncoderDecoderTestCase(unittest.TestCase):
             (
                 self.batch_sampler.batch_size,
                 self.batch_sampler.n_steps,
-                len(self.batch_sampler.vocabulary),
+                len(self.vocabulary),
             ),
             outputs.shape,
         )
@@ -91,6 +92,7 @@ class SMILESEncoderDecoderTestCase(unittest.TestCase):
         that training progresses.
         """
         callbacks = [ProgressBar()]
+        # noinspection PyTypeChecker
         self.model.fit(
             batch_sampler=self.batch_sampler,
             optimizer=mx.optimizer.Adam(learning_rate=0.005),

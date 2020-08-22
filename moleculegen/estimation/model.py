@@ -5,26 +5,27 @@ Classes
 -------
 SMILESEncoderDecoder
     A generative recurrent neural network to encode-decode SMILES strings.
+SMILESEncoderDecoderFineTuner
+    The fine-tuner of SMILESEncoderDecoder model.
 """
 
 __all__ = (
     'SMILESEncoderDecoder',
+    'SMILESEncoderDecoderFineTuner',
 )
 
-
-from typing import Callable, List, Optional, Sequence, Tuple, Union
+import json
+from typing import Optional, Union
 
 import mxnet as mx
-from mxnet import autograd, gluon
+from mxnet import gluon
 
 from . import _gluon_common
-from ..callback.base import Callback
-from ..data.sampler import BatchSampler
+from .base import SMILESEncoderDecoderABC
 from ..description.common import OneHotEncoder
-from ..evaluation.loss import get_mask_for_loss
 
 
-class SMILESEncoderDecoder(gluon.Block):
+class SMILESEncoderDecoder(SMILESEncoderDecoderABC):
     """A generative recurrent neural network to encode-decode SMILES strings.
 
     Parameters
@@ -43,6 +44,8 @@ class SMILESEncoderDecoder(gluon.Block):
     embedding_init : str or mxnet.init.Initializer,
             default mxnet.init.Orthogonal()
         The parameter initializer of an embedding layer.
+    embedding_prefix : str, default 'embedding_'
+        The prefix of an embedding block.
     rnn : {'vanilla', 'lstm', 'gru'}, default 'lstm'
         A recurrent layer.
     n_rnn_layers : int, default 1
@@ -54,6 +57,8 @@ class SMILESEncoderDecoder(gluon.Block):
     rnn_init : str or mxnet.init.Initializer,
             default mxnet.init.Orthogonal()
         The parameter initializer of a recurrent layer.
+    rnn_prefix : str, default 'encoder_'
+        The prefix of an encoder block.
     n_dense_layers : int, default 1
         The number of dense layers.
     n_dense_units : int, default 128
@@ -65,6 +70,8 @@ class SMILESEncoderDecoder(gluon.Block):
     dense_init : str or mxnet.init.Initializer,
             default mxnet.init.Xavier()
         The parameter initializer of a dense layer.
+    dense_prefix : str, default 'decoder_'
+        The prefix of a decoder block.
     dtype : str, default 'float32'
         Data type.
     ctx : mxnet.context.Context, default mxnet.context.cpu()
@@ -94,18 +101,19 @@ class SMILESEncoderDecoder(gluon.Block):
             embedding_dim: int = 4,
             embedding_init: Optional[
                 Union[str, mx.init.Initializer]] = mx.init.Uniform(),
+            embedding_prefix: str = 'embedding_',
             rnn: str = 'lstm',
             n_rnn_layers: int = 1,
             n_rnn_units: int = 64,
             rnn_dropout: float = 0.,
-            rnn_init: Optional[
-                Union[str, mx.init.Initializer]] = mx.init.Orthogonal(),
+            rnn_init: Optional[Union[str, mx.init.Initializer]] = mx.init.Orthogonal(),
+            rnn_prefix: str = 'encoder_',
             n_dense_layers: int = 1,
             n_dense_units: int = 128,
             dense_activation: str = 'relu',
             dense_dropout: float = 0.,
-            dense_init: Optional[
-                Union[str, mx.init.Initializer]] = mx.init.Xavier(),
+            dense_init: Optional[Union[str, mx.init.Initializer]] = mx.init.Xavier(),
+            dense_prefix: str = 'decoder_',
             dtype: Optional[str] = 'float32',
             *,
             ctx: mx.context.Context = mx.context.cpu(),
@@ -138,62 +146,49 @@ class SMILESEncoderDecoder(gluon.Block):
             )
 
         # Initialize mxnet.gluon.Block parameters.
-        super().__init__(prefix=prefix, params=params)
+        super().__init__(ctx=ctx, prefix=prefix, params=params)
 
-        # Define (and initialize) an embedding layer.
-        if use_one_hot:
-            self._embedding = OneHotEncoder(vocab_size)
-        else:
-            self._embedding = gluon.nn.Embedding(
-                input_dim=vocab_size,
-                output_dim=embedding_dim,
+        with self.name_scope():
+            # Define (and initialize) an embedding layer.
+            if use_one_hot:
+                self._embedding = OneHotEncoder(vocab_size)
+            else:
+                self._embedding = gluon.nn.Embedding(
+                    input_dim=vocab_size,
+                    output_dim=embedding_dim,
+                    dtype=dtype,
+                    prefix=embedding_prefix,
+                )
+                if initialize:
+                    self._embedding.initialize(init=embedding_init, ctx=ctx)
+
+            # Select and initialize a recurrent block.
+            self._encoder = _gluon_common.RNN_MAP[rnn](
+                hidden_size=n_rnn_units,
+                num_layers=n_rnn_layers,
+                dropout=rnn_dropout,
                 dtype=dtype,
+                prefix=rnn_prefix,
             )
             if initialize:
-                self._embedding.initialize(init=embedding_init, ctx=ctx)
+                self._encoder.initialize(init=rnn_init, ctx=ctx)
 
-        # Select and initialize a recurrent block.
-        self._encoder = _gluon_common.RNN_MAP[rnn](
-            hidden_size=n_rnn_units,
-            num_layers=n_rnn_layers,
-            dropout=rnn_dropout,
-            dtype=dtype,
-        )
-        if initialize:
-            self._encoder.initialize(init=rnn_init, ctx=ctx)
-
-        # Define and initialize a dense layer(s).
-        if dense_dropout > 1e-3:
-            mlp_func = _gluon_common.dropout_mlp
-        else:
-            mlp_func = _gluon_common.mlp
-        self._decoder = mlp_func(
-            n_layers=n_dense_layers,
-            n_units=n_dense_units,
-            activation=dense_activation,
-            output_dim=vocab_size,
-            dtype=dtype,
-            dropout=dense_dropout,
-        )
-        if initialize:
-            self._decoder.initialize(init=dense_init, ctx=ctx)
-
-        # Set the model's context.
-        self.__ctx = ctx
-
-    @property
-    def ctx(self) -> mx.context.Context:
-        """Return the model's context.
-        """
-        return self.__ctx
-
-    @ctx.setter
-    def ctx(self, ctx: mx.context.Context):
-        """Set the model's context and reset the parameters' context.
-        """
-        if ctx != self.__ctx:
-            self.collect_params().reset_ctx(ctx)
-            self.__ctx = ctx
+            # Define and initialize a dense layer(s).
+            if dense_dropout > 1e-3:
+                mlp_func = _gluon_common.dropout_mlp
+            else:
+                mlp_func = _gluon_common.mlp
+            self._decoder = mlp_func(
+                n_layers=n_dense_layers,
+                n_units=n_dense_units,
+                activation=dense_activation,
+                output_dim=vocab_size,
+                dtype=dtype,
+                dropout=dense_dropout,
+                prefix=dense_prefix,
+            )
+            if initialize:
+                self._decoder.initialize(init=dense_init, ctx=ctx)
 
     @property
     def embedding(self) -> Union[OneHotEncoder, gluon.nn.Embedding]:
@@ -213,150 +208,174 @@ class SMILESEncoderDecoder(gluon.Block):
         """
         return self._decoder
 
-    def begin_state(
-            self,
-            batch_size: int = 0,
-            func: Callable[..., mx.nd.NDArray] = mx.nd.zeros,
-            **func_kwargs,
-    ) -> List[mx.np.ndarray]:
-        """Return initial hidden states of a model.
+    @classmethod
+    def from_config(cls, config_file: str) -> 'SMILESEncoderDecoder':
+        """Instantiate a model loading formal parameters from a JSON file `config_file`.
+
+        config_file : str
+            A JSON file to load formal parameters from.
+
+        model : SMILESEncoderDecoder
+        """
+        with open(config_file) as fh:
+            raw_data = json.load(fh)
+
+        return cls(
+            vocab_size=raw_data['vocab_size'],
+            initialize=raw_data['initialize'],
+            dtype=raw_data['dtype'],
+            ctx=_gluon_common.CTX_MAP[raw_data['ctx'].lower()],
+            prefix=raw_data['prefix'],
+
+            use_one_hot=raw_data['embedding']['use_one_hot'],
+            embedding_dim=raw_data['embedding']['dim'],
+            embedding_init=_gluon_common.INIT_MAP[raw_data['embedding']['init'].lower()],
+            embedding_prefix=raw_data['embedding']['prefix'],
+
+            rnn=raw_data['encoder']['rnn'],
+            n_rnn_layers=raw_data['encoder']['n_layers'],
+            n_rnn_units=raw_data['encoder']['n_units'],
+            rnn_dropout=raw_data['encoder']['dropout'],
+            rnn_init=_gluon_common.INIT_MAP[raw_data['encoder']['init'].lower()],
+            rnn_prefix=raw_data['encoder']['prefix'],
+
+            n_dense_layers=raw_data['decoder']['n_layers'],
+            n_dense_units=raw_data['decoder']['n_units'],
+            dense_activation=raw_data['decoder']['activation'],
+            dense_dropout=raw_data['decoder']['dropout'],
+            dense_init=_gluon_common.INIT_MAP[raw_data['decoder']['init'].lower()],
+            dense_prefix=raw_data['decoder']['prefix'],
+        )
+
+    @classmethod
+    def load_fine_tuner(
+            cls,
+            path: str,
+            decoder_init: Optional[Union[str, mx.init.Initializer]] = mx.init.Xavier(),
+    ) -> 'SMILESEncoderDecoder':
+        """Create a new fine-tuner model: load model configuration and parameters, and
+        initialize decoder weights.
 
         Parameters
         ----------
-        batch_size : int, default 0
-            Batch size.
-        func : callable, any -> mxnet.nd.NDArray, default mxnet.nd.zeros
-            The state initializer function.
-        **func_kwargs
-            Additional arguments for RNN layer's `begin_state` method
-            excluding an mxnet context (we explicitly pass the model's ctx).
+        path : str
+            The path to the directory of model configuration and parameters.
+            path/config.json - the formal parameters of a model;
+            path/weights.params - the parameters of a model.
+        decoder_init : str or mxnet.init.Initializer, default None
+            A decoder initializer.
 
         Returns
         -------
-        states : list of mxnet.np.ndarray
-            The list of initial hidden states.
+        model : SMILESEncoderDecoder
         """
-        return self._encoder.begin_state(
-            batch_size=batch_size, func=func, ctx=self.ctx, **func_kwargs)
+        model = cls.from_config(f'{path}/config.json')
+        model.load_parameters(f'{path}/weights.params', ctx=model.ctx)
+        model.decoder.initialize(init=decoder_init, force_reinit=True, ctx=model.ctx)
 
-    def forward(
+        return model
+
+
+class SMILESEncoderDecoderFineTuner(SMILESEncoderDecoderABC):
+    """The fine-tuner of SMILESEncoderDecoder model. Loads embedding and encoder blocks,
+    and trains a new decoder block.
+
+    Parameters
+    ----------
+    model : SMILESEncoderDecoder
+        An encoder-decoder model to fine-tune.
+    output_dim : int
+        The number of output neurons.
+    initialize : bool, default True
+        Whether to initialize decoder's parameters.
+    n_dense_layers : int, default 1
+        The number of dense layers.
+    n_dense_units : int, default 128
+        The number of neurons in each dense layer.
+    dense_activation : str, default 'relu'
+        The activation function in a dense layer.
+    dense_dropout : float, default 0.0
+        The dropout rate of a dense layer.
+    dense_init : str or mxnet.init.Initializer,
+            default mxnet.init.Xavier()
+        The parameter initializer of a dense layer.
+    dense_prefix : str, default 'decoder_'
+        The prefix of a decoder block.
+    dtype : str, default 'float32'
+        Data type.
+    ctx : mxnet.context.Context, default mxnet.context.cpu()
+        CPU or GPU.
+
+    prefix : str, default None
+    params : mxnet.gluon.ParameterDict, default None
+
+    Attributes
+    ----------
+    ctx : mxnet.context.Context
+        The model's context.
+    embedding : OneHotEncoder or mxnet.gluon.nn.Embedding
+        An embedding layer.
+    encoder : mxnet.gluon.rnn.RNN or mxnet.gluon.rnn.LSTM
+            or mxnet.gluon.rnn.GRU
+        An RNN encoder.
+    decoder : mxnet.gluon.nn.Dense or mxnet.gluon.nn.Sequential
+        A Feed-Forward NN decoder.
+    """
+
+    def __init__(
             self,
-            inputs: mx.np.ndarray,
-            states: List[mx.np.ndarray],
-    ) -> Tuple[mx.np.ndarray, List[mx.np.ndarray]]:
-        """Run forward computation.
-
-        Parameters
-        ----------
-        inputs : mxnet.np.ndarray,
-                shape = (batch size, time steps)
-            Input samples.
-        states : list of mxnet.np.ndarray,
-                shape = (rnn layers, batch size, rnn units)
-            Hidden states.
-
-        Returns
-        -------
-        outputs : mxnet.np.ndarray,
-                shape = (batch size, time steps, vocabulary dimension)
-            The decoded outputs.
-        states : list of mxnet.np.ndarray,
-                shape = (rnn layers, batch size, rnn units)
-            The updated hidden states.
-        """
-        inputs = self._embedding(inputs.T)
-        outputs, states = self._encoder(inputs, states)
-        outputs = self._decoder(outputs).swapaxes(0, 1)
-
-        return outputs, states
-
-    def fit(
-            self,
-            batch_sampler: BatchSampler,
-            optimizer: mx.optimizer.Optimizer,
-            loss_fn: gluon.loss.Loss,
-            n_epochs: int = 1,
-            callbacks: Optional[Sequence[Callback]] = None,
+            model: SMILESEncoderDecoder,
+            output_dim: int,
+            initialize: bool = True,
+            n_dense_layers: int = 1,
+            n_dense_units: int = 128,
+            dense_activation: str = 'relu',
+            dense_dropout: float = 0.,
+            dense_init: Optional[Union[str, mx.init.Initializer]] = mx.init.Xavier(),
+            dense_prefix: str = 'fine_tuner_decoder_',
+            dtype: Optional[str] = 'float32',
+            *,
+            ctx: mx.context.Context = mx.context.cpu(),
+            prefix: Optional[str] = None,
+            params: Optional[gluon.ParameterDict] = None,
     ):
-        """Train the model for `n_epochs` number of epochs. Optionally call `callbacks`
-        to monitor training progress.
+        super().__init__(ctx=ctx, prefix=prefix, params=params)
 
-        Parameters
-        ----------
-        batch_sampler : BatchSampler
-            The dataloader to sample mini-batches.
-        optimizer : mxmet.optimizer.Optimizer
-            An mxnet optimizer.
-        loss_fn : mxnet.gluon.loss.Loss
-            A gluon loss functor.
-        n_epochs : int, default 1
-            The number of epochs to train.
-        callbacks : sequence of Callback, default None
-            The callbacks to run during training.
+        model.ctx = self.ctx
+
+        self._embedding = model.embedding
+        self._encoder = model.encoder
+
+        if dense_dropout > 1e-3:
+            mlp_func = _gluon_common.dropout_mlp
+        else:
+            mlp_func = _gluon_common.mlp
+        self._decoder = mlp_func(
+            n_layers=n_dense_layers,
+            n_units=n_dense_units,
+            activation=dense_activation,
+            output_dim=output_dim,
+            dtype=dtype,
+            dropout=dense_dropout,
+            prefix=dense_prefix,
+        )
+        if initialize:
+            self._decoder.initialize(init=dense_init, ctx=self.ctx)
+
+    @property
+    def embedding(self) -> Union[OneHotEncoder, gluon.nn.Embedding]:
+        """Return the embedding layer.
         """
-        # The named arguments required by callbacks on epoch/batch calls.
-        init_params = {
-            # Constant parameters.
-            'batch_sampler': batch_sampler,
-            'optimizer': optimizer,
-            'loss_fn': loss_fn,
-            'n_epochs': n_epochs,
-            # Changeable parameters.
-            'model': self,
-            'epoch': 0,
-        }
-        # The named arguments required by callbacks on batch calls.
-        train_params = dict.fromkeys([
-            'batch_no', 'batch', 'loss', 'predictions', 'outputs'
-        ])
-        callbacks = callbacks or []
+        return self._embedding
 
-        try:
-            trainer = gluon.Trainer(self.collect_params(), optimizer)
-            state_func: Callable = batch_sampler.init_state_func()
+    @property
+    def encoder(self) -> Union[gluon.rnn.RNN, gluon.rnn.LSTM, gluon.rnn.GRU]:
+        """Return the RNN encoder.
+        """
+        return self._encoder
 
-            for epoch in range(1, n_epochs + 1):
-
-                init_params['epoch'] = epoch
-                for callback in callbacks:
-                    callback.on_epoch_begin(**init_params)
-
-                states: Optional[List[mx.np.ndarray]] = None
-
-                for batch_no, batch in enumerate(batch_sampler, start=1):
-
-                    batch = batch.as_in_ctx(self.ctx)
-                    states = batch_sampler.init_states(
-                        model=self,
-                        mini_batch=batch,
-                        states=states,
-                        init_state_func=state_func,
-                    )
-
-                    train_params['batch_no'] = batch_no
-                    train_params['batch'] = batch
-                    for callback in callbacks:
-                        callback.on_batch_begin(**init_params, **train_params)
-
-                    with autograd.record():
-                        predictions, states = self.forward(batch.inputs, states)
-                        weights = get_mask_for_loss(batch.shape, batch.valid_lengths)
-                        loss = loss_fn(predictions, batch.outputs, weights)
-
-                    loss.backward()
-                    trainer.step(batch.valid_lengths.sum())
-
-                    train_params['loss'] = loss
-                    train_params['predictions'] = predictions
-                    train_params['outputs'] = batch.outputs
-                    for callback in callbacks:
-                        callback.on_batch_end(**init_params, **train_params)
-
-                init_params['model'] = self
-                for callback in callbacks:
-                    callback.on_epoch_end(**init_params, **train_params)
-
-        except KeyboardInterrupt:
-            init_params['model'] = self
-            for callback in callbacks:
-                callback.on_keyboard_interrupt(**init_params)
+    @property
+    def decoder(self) -> Union[gluon.nn.Dense, gluon.nn.Sequential]:
+        """Return the Feed-Forward NN decoder.
+        """
+        return self._decoder
