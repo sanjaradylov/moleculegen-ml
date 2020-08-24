@@ -8,6 +8,8 @@ Callback
 
 BatchMetricScorer
     Calculate and log metrics after batch sampling and forward computation.
+EarlyStopping
+    Stop training when a monitored evaluation function has stopped improving.
 EpochMetricScorer
     Calculate and log metrics at the end of every epoch.
 ProgressBar
@@ -17,6 +19,7 @@ ProgressBar
 __all__ = (
     'BatchMetricScorer',
     'Callback',
+    'EarlyStopping',
     'EpochMetricScorer',
     'ProgressBar',
 )
@@ -25,6 +28,7 @@ __all__ = (
 from .base import Callback
 from .callbacks import (
     BatchMetricScorer,
+    EarlyStopping,
     EpochMetricScorer,
     ProgressBar,
 )
