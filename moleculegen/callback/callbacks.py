@@ -5,6 +5,8 @@ Classes
 -------
 BatchMetricScorer
     Calculate and log metrics after batch sampling and forward computation.
+EarlyStopping
+    Stop training when a monitored evaluation function has stopped improving.
 EpochMetricScorer
     Calculate and log metrics at the end of every epoch.
 ProgressBar
@@ -13,6 +15,7 @@ ProgressBar
 
 __all__ = (
     'BatchMetricScorer',
+    'EarlyStopping',
     'EpochMetricScorer',
     'ProgressBar',
 )
@@ -23,6 +26,7 @@ import datetime
 import math
 import statistics
 import sys
+import tempfile
 import time
 from typing import Deque, List, Optional, Sequence
 
@@ -155,6 +159,113 @@ class EpochMetricScorer(Callback):
 
             name, result = metric.get()
             sys.stdout.write(f'{name}: {result:.3f}  ')
+
+
+class EarlyStopping(Callback):
+    """Stop training when a monitored evaluation function (loss) has stopped improving.
+
+    Parameters
+    ----------
+    min_delta : float, default 0.0
+        An absolute change higher than `min_delta` will count as improvement.
+    patience : int, default 0
+        If no improvement takes place after `patience` epochs, stop training.
+    restore_best_weights : bool, default False
+        Whether to restore the parameters from the epoch with the best `monitor` value.
+    """
+
+    def __init__(
+            self,
+            min_delta: float = 0.0,
+            patience: int = 0,
+            restore_best_weights: bool = False,
+    ):
+        self.__min_delta = min_delta
+        self.__patience = patience
+        self.__restore_best_weights = restore_best_weights
+
+        if self.__restore_best_weights:
+            self._path_to_weights = tempfile.gettempdir()
+
+        self._best_epoch: int = 0
+        self._best_loss: float = float('inf')
+        self._patience_count: int = 0
+        self._current_loss: Optional[float] = None
+        self._n_instances: Optional[int] = None
+
+    def _get_path_to_weights(self, epoch: int) -> str:
+        """Return the path to the parameters at epoch #`epoch`.
+        """
+        return f'{self._path_to_weights}/epoch_{epoch}.params'
+
+    def on_epoch_begin(self, **fit_kwargs):
+        """Initialize the variables to store loss values.
+        """
+        self._current_loss = 0.0
+        self._n_instances = 0
+
+    def on_batch_end(self, **fit_kwargs):
+        """Save the loss value on the current batch.
+
+        Parameters
+        ----------
+        Expected named arguments:
+            - loss
+        """
+        self._current_loss += fit_kwargs.get('loss').mean().item()
+        self._n_instances += 1
+
+    def on_epoch_end(self, **fit_kwargs):
+        """Calculate the average loss and compare it with the previous results to make
+        a decision on early stopping.
+
+        Parameters
+        ----------
+        Expected named arguments:
+            - epoch
+            - model
+
+        Raises
+        ------
+        KeyboardInterrupt
+            If no improvement occurs during `self.__patience` epochs.
+            See `on_keyboard_interrupt` implementation.
+        """
+        epoch = fit_kwargs.get('epoch')
+
+        mean_loss = self._current_loss / self._n_instances
+
+        if mean_loss + self.__min_delta > self._best_loss:
+            self._patience_count += 1
+        else:
+            self._patience_count = 0
+
+            model = fit_kwargs.get('model')
+            filename = self._get_path_to_weights(epoch)
+            with open(filename, mode='wb') as fh:
+                model.save_parameters(fh.name)
+
+        if mean_loss < self._best_loss:
+            self._best_loss = mean_loss
+            self._best_epoch = epoch
+
+        if self._patience_count == self.__patience:
+            raise KeyboardInterrupt
+
+    def on_keyboard_interrupt(self, **fit_kwargs):
+        """Restore the best weights if the corresponding formal parameter is specified.
+
+        Parameters
+        ----------
+        Expected named arguments:
+            - epoch
+            - model
+        """
+        epoch = fit_kwargs.get('epoch')
+
+        if self.__restore_best_weights and self._best_epoch != epoch:
+            model = fit_kwargs.get('model')
+            model.load_parameters(self._get_path_to_weights(self._best_epoch))
 
 
 class ProgressBar(Callback):

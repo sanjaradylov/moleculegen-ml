@@ -9,6 +9,7 @@ __author__ = 'Sanjar Ad[iy]lov'
 
 
 import argparse
+import itertools
 import pathlib
 from typing import Optional
 
@@ -20,8 +21,11 @@ import moleculegen as mg
 
 
 def main():
-    """Main function: load data comprising molecules, create RNN,
-    fit RNN with the data, and predict novel molecules.
+    """Main function:
+    - load data for training and fine-tuning;
+    - load a model configuration and a vocabulary from a checkpoint;
+    - train an encoder-decoder model on the training data and monitor the progress;
+    - fine-tune the model on the fine-tuning data and monitor the progress.
     """
     options = process_options()
 
@@ -53,9 +57,27 @@ def main():
         last_batch='rollover',
     )
 
-    model = mg.estimation.SMILESEncoderDecoder.from_config(
-        f'{options.checkpoint}/config.json',
+    predictor = mg.generation.GreedySearch(ctx=lambda a: a.as_in_ctx(model.ctx))
+
+    stage1_epoch_metric_scorer = mg.callback.EpochMetricScorer(
+        metrics=[
+            mg.evaluation.RAC(name='RUAC', count_unique=True),
+        ],
+        predictor=predictor,
+        vocabulary=stage1_vocab,
+        train_dataset=[mg.Token.crop(smiles) for smiles in stage1_dataset],
     )
+    progressbar = mg.callback.ProgressBar()
+    early_stopping = mg.callback.EarlyStopping(
+        min_delta=0.002,
+        patience=3,
+        restore_best_weights=True,
+    )
+    stage1_callbacks = [
+        stage1_epoch_metric_scorer,
+        progressbar,
+        early_stopping,
+    ]
     lr_scheduler = mx.lr_scheduler.FactorScheduler(
         factor=0.8,
         stop_factor_lr=1e-5,
@@ -68,32 +90,34 @@ def main():
         lr_scheduler=lr_scheduler,
     )
     loss_fn = gluon.loss.SoftmaxCELoss()
-    callbacks = [
-        mg.callback.EpochMetricScorer(
-            metrics=[
-                mg.evaluation.RAC(name='RUAC', count_unique=True),
-            ],
-            predictor=mg.generation.GreedySearch(ctx=lambda a: a.as_in_ctx(model.ctx)),
-            vocabulary=stage1_vocab,
-            train_dataset=[mg.Token.crop(smiles) for smiles in stage1_dataset],
-        ),
-        mg.callback.ProgressBar(),
-    ]
+    model = mg.estimation.SMILESEncoderDecoder.from_config(
+        f'{options.checkpoint}/config.json',
+    )
     # noinspection PyTypeChecker
     model.fit(
         batch_sampler=stage1_batch_sampler,
         optimizer=optimizer,
         loss_fn=loss_fn,
         n_epochs=options.n_epochs,
-        # callbacks=callbacks,
+        callbacks=stage1_callbacks,
     )
 
-    fine_tuner = mg.estimation.SMILESEncoderDecoderFineTuner(
-        model=model,
-        output_dim=len(stage1_vocab),
-        dense_dropout=0.25,
-        ctx=model.ctx,
+    stage2_epoch_metric_scorer = mg.callback.EpochMetricScorer(
+        metrics=[
+            mg.evaluation.RAC(name='RUAC', count_unique=True),
+        ],
+        predictor=predictor,
+        vocabulary=stage1_vocab,
+        train_dataset=[
+            mg.Token.crop(smiles)
+            for smiles in itertools.chain(stage1_dataset, stage2_dataset)
+        ],
     )
+    stage2_callbacks = [
+        stage2_epoch_metric_scorer,
+        progressbar,
+        early_stopping,
+    ]
     lr_scheduler_fine_tune = mx.lr_scheduler.FactorScheduler(
         factor=0.7,
         stop_factor_lr=1e-6,
@@ -105,13 +129,19 @@ def main():
         clip_gradient=options.grad_clip_length,
         lr_scheduler=lr_scheduler_fine_tune,
     )
+    fine_tuner = mg.estimation.SMILESEncoderDecoderFineTuner(
+        model=model,
+        output_dim=len(stage1_vocab),
+        dense_dropout=0.25,
+        ctx=model.ctx,
+    )
     # noinspection PyTypeChecker
     fine_tuner.fit(
         batch_sampler=stage2_batch_sampler,
         optimizer=optimizer_fine_tune,
         loss_fn=loss_fn,
         n_epochs=options.n_epochs_fine_tune,
-        callbacks=callbacks,
+        callbacks=stage2_callbacks,
     )
 
 
@@ -217,7 +247,7 @@ def process_options() -> argparse.Namespace:
         '-e', '--n_epochs',
         help='The number of epochs (training).',
         type=PositiveInteger,
-        default=10,
+        default=20,
     )
     fit_options.add_argument(
         '-L', '--learning_rate_fine_tune',
