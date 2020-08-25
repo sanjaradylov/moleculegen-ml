@@ -1,0 +1,29 @@
+name: moleculegen
+
+on:
+  push:
+    branches: [ $default-branch ]
+  pull_request:
+    branches: [ $default-branch ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.7]
+      max-parallel: 5
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+        $CONDA/bin/conda env update --file environment.yml --name base
+    - name: Test with unittest
+      run: |
+        python3 -Wi -m unittest discover
