@@ -2,7 +2,7 @@
 **/.idea/*
 *.log
 **/.ipynb_checkpoints/*
-data/sets/*.csv
+data/sets/*
 data/params/*
 /dist/
 /*.egg-info

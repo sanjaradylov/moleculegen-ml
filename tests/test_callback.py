@@ -19,8 +19,8 @@ class ProgressBarTestCase(unittest.TestCase):
         """
         callback = ProgressBar()
 
-        n_epochs = 10
-        n_batches = 100
+        n_epochs = 2
+        n_batches = 40
         batch_sampler = list(range(n_batches))
 
         for epoch in range(1, n_epochs + 1):
@@ -31,7 +31,7 @@ class ProgressBarTestCase(unittest.TestCase):
             for (batch_no, batch), loss in zip(
                     enumerate(batch_sampler, start=1), losses):
                 callback.on_batch_begin()
-                time.sleep(0.25 + mx.np.random.uniform().item())
+                time.sleep(0.15 + mx.np.random.uniform(0, 0.1).item())
                 callback.on_batch_end(loss=loss, batch_no=batch_no)
 
             callback.on_epoch_end()

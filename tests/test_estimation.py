@@ -14,7 +14,7 @@ from moleculegen.data import (
     SMILESVocabulary,
 )
 from moleculegen.estimation import SMILESEncoderDecoder
-from moleculegen.tests.utils import TempSMILESFile
+from .utils import TempSMILESFile
 
 
 class SMILESEncoderDecoderTestCase(unittest.TestCase):
@@ -97,7 +97,7 @@ class SMILESEncoderDecoderTestCase(unittest.TestCase):
             batch_sampler=self.batch_sampler,
             optimizer=mx.optimizer.Adam(learning_rate=0.005),
             loss_fn=gluon.loss.SoftmaxCELoss(),
-            n_epochs=20,
+            n_epochs=10,
             callbacks=callbacks,
         )
 
