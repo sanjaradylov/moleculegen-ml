@@ -8,7 +8,7 @@ from numpy import ndarray
 from scipy.sparse import csr_matrix
 
 from moleculegen.description import MorganFingerprint
-from moleculegen.tests.utils import SMILES_STRINGS
+from .utils import SMILES_STRINGS
 
 
 class ECFPTestCase(unittest.TestCase):

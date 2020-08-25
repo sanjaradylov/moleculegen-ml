@@ -1,3 +1,0 @@
-"""
-Test `moleculegen` modules.
-"""

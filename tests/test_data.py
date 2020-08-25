@@ -12,7 +12,7 @@ from moleculegen.data import (
     SMILESDataset,
     SMILESVocabulary,
 )
-from moleculegen.tests.utils import TempSMILESFile
+from .utils import TempSMILESFile
 
 
 class SMILESDatasetTestCase(unittest.TestCase):

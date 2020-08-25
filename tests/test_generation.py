@@ -13,7 +13,7 @@ from moleculegen.data import (
 )
 from moleculegen.estimation import SMILESEncoderDecoder
 from moleculegen.generation import GreedySearch
-from moleculegen.tests.utils import TempSMILESFile
+from .utils import TempSMILESFile
 
 
 class GreedySearchTestCase(unittest.TestCase):
