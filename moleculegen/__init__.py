@@ -9,8 +9,9 @@ __version__ = 'beta'
 
 __all__ = (
     # Modules.
+    'callback',
     'data',
-    'evaluation',
+    'estimation',
     'generation',
 
     # Classes.
@@ -19,8 +20,9 @@ __all__ = (
 )
 
 
+from . import callback
 from . import data
-from . import evaluation
+from . import estimation
 from . import generation
 
 from .base import (

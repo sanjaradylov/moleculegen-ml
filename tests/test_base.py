@@ -100,7 +100,7 @@ class TokenTestCase(unittest.TestCase):
         test(['C', 'N', 'C', 'n', 'o', 'Cl', 'C', 'Cl', 'O'])
 
         # Subcompound tokens.
-        test(['N', '[C@H]', '(', 'C', ')', 'C', '(=O)', 'O'])
+        test(['N', '[C@H]', '(', 'C', ')', 'C', '(', '=', 'O', ')', 'O'])
 
 
 if __name__ == '__main__':

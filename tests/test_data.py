@@ -12,7 +12,7 @@ from moleculegen.data import (
     SMILESDataset,
     SMILESVocabulary,
 )
-from moleculegen.tests.utils import TempSMILESFile
+from .utils import TempSMILESFile
 
 
 class SMILESDatasetTestCase(unittest.TestCase):
@@ -54,7 +54,7 @@ class SMILESBatchColumnSamplerTestCase(unittest.TestCase):
         dataset = SMILESDataset(self.fh.name)
         vocabulary = SMILESVocabulary(dataset=dataset, need_corpus=True)
         self.dataloader = SMILESBatchColumnSampler(
-            vocabulary=vocabulary,
+            corpus=vocabulary.corpus,
             batch_size=2,
             n_steps=4,
             shuffle=True,
@@ -83,7 +83,7 @@ class SMILESConsecutiveSamplerTestCase(unittest.TestCase):
     def test_sampling_with_padding(self):
         smiles_string = Token.tokenize(Token.augment(self.smiles_string))
         n_steps = 20
-        sampler = SMILESConsecutiveSampler(self.vocabulary, n_steps=n_steps)
+        sampler = SMILESConsecutiveSampler(self.vocabulary.corpus, n_steps=n_steps)
 
         step_i = 0
         for sample in sampler:
@@ -108,7 +108,7 @@ class SMILESConsecutiveSamplerTestCase(unittest.TestCase):
     def test_sampling_without_padding(self):
         tokens = Token.tokenize(Token.augment(self.smiles_string))
         n_steps = len(tokens) - 1
-        sampler = SMILESConsecutiveSampler(self.vocabulary, n_steps=n_steps)
+        sampler = SMILESConsecutiveSampler(self.vocabulary.corpus, n_steps=n_steps)
 
         step_i = 0
         for n_samples, sample in enumerate(sampler, start=1):

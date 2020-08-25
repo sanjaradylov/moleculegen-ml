@@ -8,4 +8,4 @@ dependencies:
   - pandas
   - scikit-learn
   - pip:
-    - -r file: requirements.txt
+    - mxnet==1.6.0
