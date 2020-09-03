@@ -21,9 +21,7 @@ setup(
     },
     packages=[
         'moleculegen',
-        'moleculegen.callback',
         'moleculegen.data',
-        'moleculegen.estimation',
         'moleculegen.generation',
     ],
     include_package_data=False,
