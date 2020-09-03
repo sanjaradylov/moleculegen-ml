@@ -135,6 +135,8 @@ class GreedySearch:
             The prefix of a SMILES string to generate
         max_length : int, default: 80
             The maximum number of tokens to generate.
+        temperature : float, default 1.0
+            A sensitivity parameter.
 
         Returns
         -------
