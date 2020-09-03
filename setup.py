@@ -26,6 +26,6 @@ setup(
     ],
     include_package_data=False,
     install_requires=[
-        'mxnet-cu101mkl',
+        'mxnet-cu101mkl==1.6.0',
     ],
 )
