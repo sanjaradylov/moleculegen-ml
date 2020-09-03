@@ -12,7 +12,7 @@ __all__ = (
 )
 
 
-from mxnet import np, npx
+import mxnet as mx
 
 
 class OneHotEncoder:
@@ -28,15 +28,18 @@ class OneHotEncoder:
     def __init__(self, depth: int):
         self.depth = depth
 
-    def __call__(self, indices: np.ndarray, *args, **kwargs) -> np.ndarray:
+    def __call__(self, indices: mx.np.ndarray, *args, **kwargs) -> mx.np.ndarray:
         """Return one-hot encoded tensor.
 
         Parameters
         ----------
-        indices : np.ndarray
+        indices : nx.np.ndarray or mx.sym.Symbol
             The indices (categories) to encode.
         *args, **kwargs
             Additional arguments for `nd.one_hot`.
         """
+        if isinstance(indices, mx.sym.Symbol):
+            return mx.sym.one_hot(
+                indices.as_nd_ndarray(), self.depth, *args, **kwargs).as_np_ndarray()
         # noinspection PyUnresolvedReferences
-        return npx.one_hot(indices, self.depth, *args, **kwargs)
+        return mx.npx.one_hot(indices, self.depth, *args, **kwargs)

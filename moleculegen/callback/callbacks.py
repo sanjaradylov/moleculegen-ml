@@ -102,6 +102,8 @@ class EpochMetricScorer(Callback):
         The prefix of a SMILES string to generate
     max_length : int, default: 80
         The maximum number of tokens to generate.
+    temperature : float, default 1.0
+        A sensitivity parameter.
     n_predictions : int, default 10000
         The number of SMILES strings to generate.
     train_dataset : sequence of str, default None
@@ -115,6 +117,7 @@ class EpochMetricScorer(Callback):
             vocabulary: SMILESVocabulary,
             prefix: str = Token.BOS,
             max_length: int = 80,
+            temperature: float = 1.0,
             n_predictions: int = 1000,
             train_dataset: Optional[Sequence[str]] = None,
     ):
@@ -124,6 +127,7 @@ class EpochMetricScorer(Callback):
             'vocabulary': vocabulary,
             'prefix': prefix,
             'max_length': max_length,
+            'temperature': temperature,
         }
         self.__n_predictions = n_predictions
         self.__train_dataset = train_dataset
@@ -263,7 +267,11 @@ class EarlyStopping(Callback):
         """
         epoch = fit_kwargs.get('epoch')
 
-        if self.__restore_best_weights and self._best_epoch != epoch:
+        if (
+                self.__restore_best_weights
+                and self._best_epoch != 0
+                and self._best_epoch != epoch
+        ):
             model = fit_kwargs.get('model')
             model.load_parameters(self._get_path_to_weights(self._best_epoch))
 

@@ -35,33 +35,41 @@ class SMILESVocabulary:
     or work directly with `tokens` if specified. Eventually obtain unique
     SMILES tokens and their frequencies to create token-to-index and
     index-to-token variables.
+    If you want the class to manually process your data, pass `dataset` or `tokens`.
+    If you have a pickled file with all metadata (see the documentation below), pass the
+    file path `load_from_pickle`.
 
     Parameters
     ----------
     dataset : SMILESDataset, default None
         SMILES data set.
-    tokens : list, default None
+    tokens : list of list of str, default None
         SMILES tokens.
     need_corpus : bool, default False
         If True, load `corpus`property of token IDs for every SMILES sequence.
         Pass non-empty `dataset` or `tokens`.
     load_from_pickle : str, default None
-        If passed, load all the attributes from the file named
-        `load_from_pickle`.
-    save_to_pickle : str, default None
-        If passed, save all the attributes to the file named
-        `save_to_pickle`.
+        If passed, load all the attributes from the file named `load_from_pickle`.
+
+    The following metadata will be stored for every vocabulary instance. To save them in
+    a pickled file, use the `to_pickle` method. To load them from the file to initialize
+    a new vocabulary instance, pass the `load_from_pickle` parameter.
 
     Attributes
     ----------
-    idx_to_token : list
+    idx_to_token : list of str
         List of tokens.
-    token_to_idx : dict
+    token_to_idx : dict, str -> int
         Token-index mapping.
-    token_freqs : dict
+    token_freqs : dict, str -> int
         The token-to-count mapping.
-    corpus : list
+    corpus : list of list of int or None
         Original data set corpus. Accessible only if corpus is needed.
+
+    Raises
+    ------
+    ValueError
+        If all parameters `dataset`, `tokens`, and `load_from_pickle` are empty.
     """
 
     # Special token IDs.
@@ -73,12 +81,11 @@ class SMILESVocabulary:
     def __init__(
             self,
             dataset: Optional[SimpleDataset] = None,
-            tokens: Optional[List[str]] = None,
+            tokens: Optional[List[List[str]]] = None,
             need_corpus: bool = False,
             load_from_pickle: Optional[str] = None,
-            save_to_pickle: Optional[str] = None,
     ):
-        self._corpus = None
+        self._corpus: Optional[List[List[int]]] = None
 
         if load_from_pickle is not None:
             with open(load_from_pickle, 'rb') as fh:
@@ -116,16 +123,6 @@ class SMILESVocabulary:
 
             if need_corpus:
                 self._corpus: List[List[int]] = [self[line] for line in tokens]
-
-        if save_to_pickle is not None:
-            with open(save_to_pickle, 'wb') as fh:
-                data_map = {
-                    'token_freqs': self._token_freqs,
-                    'idx_to_token': self._idx_to_token,
-                    'token_to_idx': self._token_to_idx,
-                    'corpus': self._corpus,
-                }
-                pickle.dump(data_map, fh, protocol=pickle.HIGHEST_PROTOCOL)
 
     def __repr__(self) -> str:
         tokens = ''
@@ -288,6 +285,23 @@ class SMILESVocabulary:
         tokens : list of str
         """
         return [self._idx_to_token[index] for index in indices]
+
+    def to_pickle(self, filename: str):
+        """Save all the attributes (`token_freqs`, `idx_to_token`, `token_to_idx`, and
+        `corpus`) as a name-to-data dictionary to a binary file `filename`.
+
+        Parameters
+        ----------
+        filename : str
+        """
+        with open(filename, 'wb') as fh:
+            data_map = {
+                'token_freqs': self._token_freqs,
+                'idx_to_token': self._idx_to_token,
+                'token_to_idx': self._token_to_idx,
+                'corpus': self._corpus,
+            }
+            pickle.dump(data_map, fh, protocol=pickle.HIGHEST_PROTOCOL)
 
 
 def count_tokens(tokens: List[List[str]]) -> Counter[str]:

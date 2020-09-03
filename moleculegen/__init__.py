@@ -4,8 +4,8 @@ Package for generation of novel molecules using machine learning methods.
 
 __author__ = 'Sanjar Ad[iy]lov'
 __maintainer__ = 'Sanjar Ad[iy]lov'
-__status__ = 'Development'
-__version__ = 'beta'
+__status__ = 'Prototype'
+__version__ = '1.0.0'
 
 __all__ = (
     # Modules.
