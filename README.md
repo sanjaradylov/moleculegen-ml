@@ -1,7 +1,9 @@
 # moleculegen
 
-![example workflow name](https://github.com/sanjaradylov/moleculegen-ml/workflows/moleculegen/badge.svg)
+![moleculegen](https://github.com/sanjaradylov/moleculegen-ml/workflows/moleculegen/badge.svg)
+![release](https://img.shields.io/github/release/sanjaradylov/moleculegen-ml.svg)
 ![PythonVersion](https://img.shields.io/badge/python-3.7-blue)
+![issues](https://img.shields.io/github/issues/sanjaradylov/moleculegen-ml)
 
 This project is an attempt to create a Python package for the complete *de novo* drug design
 cycle similar to [Segler et al](#reference).
