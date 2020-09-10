@@ -244,10 +244,11 @@ class EarlyStopping(Callback):
         else:
             self._patience_count = 0
 
-            model = fit_kwargs.get('model')
-            filename = self._get_path_to_weights(epoch)
-            with open(filename, mode='wb') as fh:
-                model.save_parameters(fh.name)
+            if self.__restore_best_weights:
+                model = fit_kwargs.get('model')
+                filename = self._get_path_to_weights(epoch)
+                with open(filename, mode='wb') as fh:
+                    model.save_parameters(fh.name)
 
         if mean_loss < self._best_loss:
             self._best_loss = mean_loss
