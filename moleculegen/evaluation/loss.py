@@ -19,13 +19,15 @@ __all__ = (
 
 
 from typing import Tuple
-from mxnet import gluon, np, npx
+
+import mxnet as mx
+import mxnet.gluon as gluon
 
 
 def get_mask_for_loss(
         output_shape: Tuple[int, int],
-        valid_lengths: np.ndarray,
-) -> np.ndarray:
+        valid_lengths: mx.np.ndarray,
+) -> mx.np.ndarray:
     """Get a boolean mask for the output tokens. Labels 1 for valid tokens
     and 0 for Token.PAD. Use as a weight mask for SoftmaxCELoss or similar
     losses.
@@ -45,10 +47,10 @@ def get_mask_for_loss(
     --------
     MaskedSoftmaxCELoss
     """
-    label_mask = np.expand_dims(
-        np.ones(output_shape, ctx=valid_lengths.ctx), axis=-1)
+    label_mask = mx.np.expand_dims(
+        mx.np.ones(output_shape, ctx=valid_lengths.ctx), axis=-1)
     # noinspection PyUnresolvedReferences
-    label_mask = npx.sequence_mask(
+    label_mask = mx.npx.sequence_mask(
         label_mask,
         valid_lengths,
         use_sequence_length=True,
@@ -65,32 +67,31 @@ class MaskedSoftmaxCELoss(gluon.loss.SoftmaxCELoss):
     # noinspection PyMethodOverriding
     def forward(
             self,
-            predictions: np.ndarray,
-            labels: np.ndarray,
-            valid_lengths: np.ndarray,
-    ) -> np.ndarray:
+            predictions: mx.np.ndarray,
+            labels: mx.np.ndarray,
+            valid_lengths: mx.np.ndarray,
+    ) -> mx.np.ndarray:
         """Compute softmax cross-entropy loss creating masks for token ids.
 
         Parameters
         ----------
-        predictions : np.ndarray,
+        predictions : mxnet.np.ndarray,
                 shape = (batch size, time steps, vocabulary dimension)
             Predicted probabilities.
-        labels : np.ndarray, shape = (batch size, time steps)
+        labels : mxnet.np.ndarray, shape = (batch size, time steps)
             True labels.
-        valid_lengths : np.ndarray, shape = (batch size,) or
+        valid_lengths : mxnet.np.ndarray, shape = (batch size,) or
                 ??? shape = (batch size, time steps)
             For every entry in labels, specified valid token length.
 
         Returns
         -------
-        loss : np.ndarray, shape = (batch size,)
+        loss : mxnet.np.ndarray, shape = (batch size,)
             Computed loss.
         """
+        weight_mask = mx.np.expand_dims(mx.np.ones_like(labels), axis=-1)
         # noinspection PyUnresolvedReferences
-        weight_mask = np.expand_dims(np.ones_like(labels), axis=-1)
-        # noinspection PyUnresolvedReferences
-        weight_mask = npx.sequence_mask(
+        weight_mask = mx.npx.sequence_mask(
             weight_mask,
             valid_lengths,
             use_sequence_length=True,
