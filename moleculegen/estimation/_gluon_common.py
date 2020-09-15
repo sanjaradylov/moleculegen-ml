@@ -28,7 +28,7 @@ CTX_MAP: Dict[str, mx.context.Context] = {
 }
 
 
-def dropout_mlp(
+def mlp(
         *,
         n_layers: int,
         n_units: int,
@@ -37,40 +37,6 @@ def dropout_mlp(
         dtype: str,
         dropout: float,
         prefix: str,
-        **kwargs,
-) -> gluon.Block:
-    """A dropout-regularized MLP built with mxnet.gluon.nn.HybridSequential.
-    """
-    net = gluon.nn.HybridSequential(prefix=prefix)
-
-    for _ in range(n_layers-1):
-        net.add(gluon.nn.Dropout(dropout))
-        net.add(gluon.nn.Dense(
-            units=n_units,
-            dtype=dtype,
-            activation=activation,
-            flatten=False,
-        ))
-
-    net.add(gluon.nn.Dropout(dropout))
-    net.add(gluon.nn.Dense(
-        units=output_dim,
-        dtype=dtype,
-        flatten=False,
-    ))
-
-    return net
-
-
-def mlp(
-        *,
-        n_layers: int,
-        n_units: int,
-        activation: str,
-        output_dim: int,
-        dtype: str,
-        prefix: str,
-        **kwargs,
 ) -> gluon.Block:
     """A single dense layer or an MLP built with mxnet.gluon.nn.HybridSequential.
     """
@@ -93,6 +59,8 @@ def mlp(
             activation=activation,
             flatten=False,
         ))
+        if dropout > 1e-3:
+            net.add(gluon.nn.Dropout(dropout))
 
     net.add(output_dense)
 
