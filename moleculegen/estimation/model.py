@@ -99,6 +99,7 @@ class SMILESEncoderDecoder(SMILESEncoderDecoderABC):
             initialize: bool = True,
             use_one_hot: bool = False,
             embedding_dim: int = 4,
+            embedding_dropout: float = 0.,
             embedding_init: Optional[
                 Union[str, mx.init.Initializer]] = mx.init.Uniform(),
             embedding_prefix: str = 'embedding_',
@@ -153,12 +154,21 @@ class SMILESEncoderDecoder(SMILESEncoderDecoderABC):
             if use_one_hot:
                 self._embedding = OneHotEncoder(vocab_size)
             else:
-                self._embedding = gluon.nn.Embedding(
+                embedding_block = gluon.nn.Embedding(
                     input_dim=vocab_size,
                     output_dim=embedding_dim,
                     dtype=dtype,
                     prefix=embedding_prefix,
                 )
+
+                if embedding_dropout > 1e-3:
+                    seq_prefix = f'{embedding_prefix.rstrip("_")}seq_'
+                    self._embedding = gluon.nn.HybridSequential(prefix=seq_prefix)
+                    self._embedding.add(embedding_block)
+                    self._embedding.add(gluon.nn.Dropout(embedding_dropout))
+                else:
+                    self._embedding = embedding_block
+
                 if initialize:
                     self._embedding.initialize(init=embedding_init, ctx=ctx)
 
@@ -174,11 +184,7 @@ class SMILESEncoderDecoder(SMILESEncoderDecoderABC):
                 self._encoder.initialize(init=rnn_init, ctx=ctx)
 
             # Define and initialize a dense layer(s).
-            if dense_dropout > 1e-3:
-                mlp_func = _gluon_common.dropout_mlp
-            else:
-                mlp_func = _gluon_common.mlp
-            self._decoder = mlp_func(
+            self._decoder = _gluon_common.mlp(
                 n_layers=n_dense_layers,
                 n_units=n_dense_units,
                 activation=dense_activation,
@@ -229,6 +235,7 @@ class SMILESEncoderDecoder(SMILESEncoderDecoderABC):
 
             use_one_hot=raw_data['embedding']['use_one_hot'],
             embedding_dim=raw_data['embedding']['dim'],
+            embedding_dropout=raw_data['embedding']['dropout'],
             embedding_init=_gluon_common.INIT_MAP[raw_data['embedding']['init'].lower()],
             embedding_prefix=raw_data['embedding']['prefix'],
 
@@ -346,11 +353,7 @@ class SMILESEncoderDecoderFineTuner(SMILESEncoderDecoderABC):
         self._embedding = model.embedding
         self._encoder = model.encoder
 
-        if dense_dropout > 1e-3:
-            mlp_func = _gluon_common.dropout_mlp
-        else:
-            mlp_func = _gluon_common.mlp
-        self._decoder = mlp_func(
+        self._decoder = _gluon_common.mlp(
             n_layers=n_dense_layers,
             n_units=n_dense_units,
             activation=dense_activation,
