@@ -112,6 +112,8 @@ class Metric(metaclass=abc.ABCMeta):
 
 class CompositeMetric:
     """Calculate a series of metrics on the same predictions and labels.
+    Works with distribution-based metrics (i.e. `predictions` are a set of generated
+    compounds and `labels` are a training/validation set).
 
     Parameters
     ----------
@@ -165,10 +167,10 @@ class CompositeMetric:
             If `metric` is not of type `Metric`.
         """
         if not isinstance(metric, Metric):
-            raise TypeError(f'value must be of type Metric, not {type(metric)}')
+            raise TypeError(f'metric must be of type Metric, not {type(metric)}')
 
         try:
-            self._metrics.__setitem__(index, metric)
+            self._metrics[index] = metric
         except IndexError as err:
             err.args = ('metrics assignment index out of range',)
             raise err
@@ -239,7 +241,7 @@ class CompositeMetric:
             self.__setitem__(index, metric)
         else:
             if not isinstance(metric, Metric):
-                raise TypeError(f'value must be of type Metric, not {type(metric)}')
+                raise TypeError(f'metric must be of type Metric, not {type(metric)}')
 
             self._metrics.append(metric)
 
@@ -268,8 +270,19 @@ class CompositeMetric:
         ----------
         metric : Metric
         metrics : tuple of Metric, default ()
+
+        Raises
+        ------
+        TypeError
+            If `metric` is not of type `Metric`.
         """
-        self._metrics.extend(itertools.chain((metric,), metrics))
+        metrics_chain = list(itertools.chain((metric,), metrics))
+
+        for metric in metrics_chain:
+            if not isinstance(metric, Metric):
+                raise TypeError(f'metric must be of type Metric, not {type(metric)}')
+
+        self._metrics.extend(metrics_chain)
 
     def get(self) -> List[Tuple[str, Real]]:
         """Retrieve the names and calculated values for every metric in the sequence.
@@ -294,7 +307,9 @@ class CompositeMetric:
         predictions : sequence of str
             The generated SMILES strings.
         labels : sequence of str, default None
-            If not None, do not count the compounds from this container.
+            The labels (usually, training set) to compare the predictions with.
+            Metrics like `Novelty` require this parameter, while for `RAC` this is
+            optional.
         """
         for metric in self._metrics:
             metric.update(predictions=predictions, labels=labels, **kwargs)
@@ -317,7 +332,7 @@ class Novelty(Metric):
             labels: Sequence[str],
             **kwargs,
     ) -> Tuple[Real, int]:
-        """Return the number of compounds from `predictions` not presented in `labels
+        """Return the number of compounds from `predictions` not presented in `labels`
         and the total number of compounds.
 
         Parameters
