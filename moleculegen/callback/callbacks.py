@@ -28,7 +28,7 @@ import statistics
 import sys
 import tempfile
 import time
-from typing import Deque, List, Optional, Sequence
+from typing import Deque, List, Optional, Sequence, Union
 
 import mxnet as mx
 
@@ -36,7 +36,7 @@ from .base import Callback
 from ..base import Token
 from ..data.vocabulary import SMILESVocabulary
 from ..estimation.model import SMILESEncoderDecoder
-from ..evaluation.metric import Metric
+from ..evaluation.metric import CompositeMetric, Metric
 from ..generation.greedy_search import GreedySearch
 
 
@@ -91,7 +91,7 @@ class EpochMetricScorer(Callback):
 
     Parameters
     ----------
-    metrics : sequence of Metric
+    metrics : CompositeMetric or sequence of Metric
         The metrics to calculate at the end of an epoch on a set of generated
         compounds (e.g. RAC).
     predictor : GreedySearch
@@ -112,7 +112,7 @@ class EpochMetricScorer(Callback):
 
     def __init__(
             self,
-            metrics: Sequence[Metric],
+            metrics: Union[Sequence[Metric], CompositeMetric],
             predictor: GreedySearch,
             vocabulary: SMILESVocabulary,
             prefix: str = Token.BOS,
@@ -121,7 +121,11 @@ class EpochMetricScorer(Callback):
             n_predictions: int = 1000,
             train_dataset: Optional[Sequence[str]] = None,
     ):
-        self.__metrics = metrics
+        if not isinstance(metrics, CompositeMetric):
+            self.__metrics = CompositeMetric(*metrics)
+        else:
+            self.__metrics = metrics
+
         self.__predictor = predictor
         self.__predictor_kwargs = {
             'vocabulary': vocabulary,
@@ -135,8 +139,7 @@ class EpochMetricScorer(Callback):
     def on_epoch_begin(self, **fit_kwargs):
         """Initialize/Reset internal states of the metrics.
         """
-        for metric in self.__metrics:
-            metric.reset()
+        self.__metrics.reset()
 
     def on_epoch_end(self, **fit_kwargs):
         """Score and log every metric.
@@ -150,19 +153,20 @@ class EpochMetricScorer(Callback):
 
         model: SMILESEncoderDecoder = fit_kwargs.get('model')
 
-        for metric in self.__metrics:
+        for _ in range(self.__n_predictions):
+            states = model.begin_state(batch_size=1)
+            smiles = self.__predictor(
+                model=model,
+                states=states,
+                **self.__predictor_kwargs,
+            )
+            self.__metrics.update(predictions=[smiles], labels=self.__train_dataset)
 
-            for _ in range(self.__n_predictions):
-                states = model.begin_state(batch_size=1)
-                smiles = self.__predictor(
-                    model=model,
-                    states=states,
-                    **self.__predictor_kwargs,
-                )
-                metric.update(predictions=[smiles], labels=self.__train_dataset)
-
-            name, result = metric.get()
-            sys.stdout.write(f'{name}: {result:.3f}  ')
+        results = ', '.join(
+            f'{name}: {value:.3f}'
+            for name, value in self.__metrics.get()
+        )
+        sys.stdout.write(results)
 
 
 class EarlyStopping(Callback):

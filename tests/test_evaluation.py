@@ -10,8 +10,11 @@ from rdkit.RDLogger import DisableLog
 from moleculegen.evaluation import (
     get_mask_for_loss,
     MaskedSoftmaxCELoss,
+    Novelty,
     Perplexity,
     RAC,
+    Uniqueness,
+    Validity,
 )
 
 
@@ -48,6 +51,102 @@ class MaskedSoftmaxCELossTestCase(unittest.TestCase):
                 valid_lengths
             )
         ))
+
+
+class NoveltyTestCase(unittest.TestCase):
+    def setUp(self):
+        self.novelty = Novelty()
+
+        self.predictions = [
+            '(((((',
+            'N#N',
+            'N#N',
+            'CN=C=O',
+            '[Cu+2].[O-]S(=O)(=O)[O-]',
+        ]
+        self.labels = [
+            'CN=C=O',
+            'CN1CCC[C@H]1c2cccnc2',
+            'CC[C@H](O1)CC[C@@]12CCCO2',
+            'CN1CCC[C@H]1c2cccnc2',
+            'CC(C)[C@@]12C[C@@H]1[C@@H](C)C(=O)C2',
+            'OCCc1c(C)[n+](cs1)Cc2cnc(C)nc2N',
+        ]
+
+    def test_1(self):
+        self.novelty.update(predictions=self.predictions, labels=self.labels)
+        name, result = self.novelty.get()
+
+        self.assertEqual(name, 'Novelty')
+        self.assertEqual(result, 0.8)
+
+    def test_2_perfect_score(self):
+        self.predictions.remove('CN=C=O')
+        self.novelty.reset()
+        self.novelty.update(predictions=set(self.predictions), labels=self.labels)
+        _, result = self.novelty.get()
+
+        self.assertEqual(result, 1.0)
+
+
+class UniquenessTestCase(unittest.TestCase):
+    def setUp(self):
+        self.uniqueness = Uniqueness()
+
+        self.predictions = [
+            '(((((',
+            'N#N',
+            'N#N',
+            'CN=C=O',
+            'CN=C=O',
+            '[Cu+2].[O-]S(=O)(=O)[O-]',
+        ]
+
+    def test_1(self):
+        self.uniqueness.update(predictions=self.predictions)
+        name, result = self.uniqueness.get()
+
+        self.assertEqual(name, 'Uniqueness')
+        self.assertAlmostEqual(float(result), 0.67, 2)
+
+    def test_2_perfect_score(self):
+        self.uniqueness.reset()
+        self.uniqueness.update(predictions=set(self.predictions))
+        _, result = self.uniqueness.get()
+
+        self.assertEqual(result, 1.0)
+
+
+class ValidityTestCase(unittest.TestCase):
+    def setUp(self):
+        self.validity = Validity()
+
+        self.predictions = [
+            # Valid
+            'CN=C=O',
+            'CN1CCC[C@H]1c2cccnc2',
+            'CC[C@H](O1)CC[C@@]12CCCO2',
+            'CN1CCC[C@H]1c2cccnc2',
+            'CC(C)[C@@]12C[C@@H]1[C@@H](C)C(=O)C2',
+            'OCCc1c(C)[n+](cs1)Cc2cnc(C)nc2N',
+            # Invalid
+            '(((((',
+        ]
+
+    def test_1(self):
+        self.validity.update(predictions=self.predictions)
+        name, result = self.validity.get()
+
+        self.assertEqual(name, 'Validity')
+        self.assertAlmostEqual(float(result), 0.86, 2)
+
+    def test_2_perfect_score(self):
+        self.predictions.pop()  # Remove invalid SMILES.
+        self.validity.reset()
+        self.validity.update(predictions=self.predictions)
+        _, result = self.validity.get()
+
+        self.assertEqual(result, 1.0)
 
 
 class RUACTestCase(unittest.TestCase):
