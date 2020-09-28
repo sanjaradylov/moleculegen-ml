@@ -9,6 +9,8 @@ EarlyStopping
     Stop training when a monitored evaluation function has stopped improving.
 EpochMetricScorer
     Calculate and log metrics at the end of every epoch.
+Generator
+    Generate, save, and optionally evaluate new compounds.
 ProgressBar
     Print progress bar every epoch of model training.
 """
@@ -17,6 +19,7 @@ __all__ = (
     'BatchMetricScorer',
     'EarlyStopping',
     'EpochMetricScorer',
+    'Generator',
     'ProgressBar',
 )
 
@@ -79,10 +82,10 @@ class BatchMetricScorer(Callback):
     def on_epoch_end(self, **fit_kwargs):
         """Calculate and log average scores.
         """
-        sys.stdout.write('\nCalculating metrics...\t')
         for metric in self.__metrics:
             name, result = metric.get()
             sys.stdout.write(f'{name}: {result:.3f}  ')
+        sys.stdout.write('\n')
 
 
 class EpochMetricScorer(Callback):
@@ -149,8 +152,6 @@ class EpochMetricScorer(Callback):
         Expected named arguments:
             - model
         """
-        sys.stdout.write('\nCalculating metrics...\t')
-
         model: SMILESEncoderDecoder = fit_kwargs.get('model')
 
         for _ in range(self.__n_predictions):
@@ -166,7 +167,7 @@ class EpochMetricScorer(Callback):
             f'{name}: {value:.3f}'
             for name, value in self.__metrics.get()
         )
-        sys.stdout.write(results)
+        sys.stdout.write(f'{results}\n')
 
 
 class EarlyStopping(Callback):
@@ -417,15 +418,169 @@ class ProgressBar(Callback):
         )
         sys.stdout.flush()
 
+        if batch_no >= self._n_batches:
+            sys.stdout.write('\n')
+
     def on_epoch_end(self, **fit_kwargs):
         """End countdown. Write execution time and mean loss.
         """
         self._epoch_time = math.ceil(time.time() - self._epoch_start_time)
 
-        sys.stdout.write('\n')
-        sys.stdout.write(f'Time {datetime.timedelta(seconds=self._epoch_time)}, ')
         sys.stdout.write(
+            f'Time {datetime.timedelta(seconds=self._epoch_time)}, '
             f'Mean loss: {statistics.mean(self._loss_list):.3f} '
-            f'(+/-{statistics.stdev(self._loss_list):.3f})'
+            f'(+/-{statistics.stdev(self._loss_list):.3f})\n'
         )
+
+    def on_keyboard_interrupt(self, **fit_kwargs):
         sys.stdout.write('\n')
+
+
+class Generator(Callback):
+    """Generate, save, and optionally evaluate new compounds.
+
+    Parameters
+    ----------
+    filename : str
+        The name of a file to save predictions. If `epoch` is None, then the full file
+        name will be `filename.csv`. Otherwise, every file will have the name
+        `filename_epoch_{epoch}.csv`.
+    predictor : GreedySearch
+        A SMILES string predictor.
+    vocabulary : SMILESVocabulary
+        The vocabulary to encode-decode tokens.
+    n_predictions : int, default 1000
+        The number of compounds to generate.
+    epoch : int, default None
+        Generate every `epoch` epoch.
+        If None, generate only after full training.
+    on_interrupt : bool, default False
+        Generate on keyboard interrupt
+        (e.g. manual keyboard interrupt or early stopping).
+    kwargs : dict, str -> any, default None
+        Additional key-word arguments for `predictor` and `metric`.
+    """
+
+    def __init__(
+            self,
+            filename: str,
+            predictor: GreedySearch,
+            vocabulary: SMILESVocabulary,
+            metric: Optional[Metric] = None,
+            epoch: Optional[int] = None,
+            on_interrupt: bool = False,
+            **kwargs,
+    ):
+        self.__predictor = predictor
+        self.__vocabulary = vocabulary
+        self.__filename = filename
+        self.__metric = metric
+        self.__epoch = epoch
+        self.__on_interrupt = on_interrupt
+        self.__kwargs = kwargs
+
+    def _generate_and_save(
+            self,
+            model: SMILESEncoderDecoder,
+            epoch: Optional[int],
+    ):
+        """Generate and save predictions. If `metric` is specified, evaluate the
+        predictions.
+
+        Parameters
+        ----------
+        model : SMILESEncoderDecoder
+        epoch : int, default None
+        """
+        def generate() -> str:
+            """Generate one SMILES string and save.
+
+            Returns
+            -------
+            smiles : str
+            """
+            states = model.begin_state(batch_size=1)
+            smiles = self.__predictor(
+                model=model,
+                states=states,
+                vocabulary=self.__vocabulary,
+                prefix=self.__kwargs.get('prefix', Token.BOS),
+                temperature=self.__kwargs.get('temperature', 0.65),
+                max_length=self.__kwargs.get('max_length', 80),
+            )
+            fh.write(f'{smiles}\n')
+
+            return smiles
+
+        # If a metric is specified, generate and save SMILES strings `n_predictions`
+        # times and evaluate them;
+        if self.__metric is not None:
+            def call():
+                for _ in range(self.__kwargs.get('n_predictions')):
+                    self.__metric.update(
+                        predictions=[generate()],
+                        labels=self.__kwargs.get('train_dataset'),
+                    )
+                name, result = self.__metric.get()
+                sys.stdout.write(f'{name}: {result:.3f}\n')
+
+        # otherwise, generate and save strings `n_predictions` times.
+        else:
+            def call():
+                for _ in range(self.__kwargs.get('n_predictions')):
+                    generate()
+
+        if epoch is not None:
+            filename = f'{self.__filename}_epoch_{epoch}.csv'
+        else:
+            filename = f'{self.__filename}.csv'
+
+        # Run the main function.
+        with open(filename, 'w') as fh:
+            sys.stdout.write(f'Saving generated compounds to {filename}.\n')
+            call()
+
+    def on_epoch_begin(self, **fit_kwargs):
+        """If a metric is specified, reset its internal state.
+
+        Parameters
+        ----------
+        Expected named arguments:
+            - n_epochs
+        """
+        if self.__metric is not None:
+            self.__metric.reset()
+
+        n_epochs = fit_kwargs.get('n_epochs')
+        if self.__epoch is None:
+            self.__epoch = n_epochs
+
+    def on_epoch_end(self, **fit_kwargs):
+        """Launch generation process every specified epoch.
+
+        Parameters
+        ----------
+        Expected named arguments:
+            - epoch
+            - model
+        """
+        model = fit_kwargs.get('model')
+        epoch = fit_kwargs.get('epoch')
+
+        if epoch % self.__epoch == 0:
+            self._generate_and_save(model, epoch)
+
+    def on_keyboard_interrupt(self, **fit_kwargs):
+        """Optionally launch generation process on (keyboard) interrupt.
+
+        Parameters
+        ----------
+        Expected named arguments:
+            - epoch
+            - model
+        """
+        model = fit_kwargs.get('model')
+        epoch = fit_kwargs.get('epoch')
+
+        if self.__on_interrupt:
+            self._generate_and_save(model, epoch)

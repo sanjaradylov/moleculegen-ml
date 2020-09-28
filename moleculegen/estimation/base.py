@@ -13,12 +13,12 @@ __all__ = (
 
 
 import abc
-from typing import Callable, List, Optional, Sequence, Tuple
+from typing import Callable, List, Optional, Sequence, TextIO, Tuple
 
 import mxnet as mx
 from mxnet import autograd, gluon
 
-from ..callback.base import Callback
+from ..callback.base import Callback, CallbackList
 from ..data.sampler import BatchSampler
 from ..evaluation.loss import get_mask_for_loss
 
@@ -145,6 +145,8 @@ class SMILESEncoderDecoderABC(gluon.HybridBlock, metaclass=abc.ABCMeta):
             loss_fn: gluon.loss.Loss,
             n_epochs: int = 1,
             callbacks: Optional[Sequence[Callback]] = None,
+            log_filename: Optional[str] = None,
+            log_verbose: Optional[bool] = False,
     ):
         """Train the model for `n_epochs` number of epochs. Optionally call `callbacks`
         to monitor training progress.
@@ -161,6 +163,12 @@ class SMILESEncoderDecoderABC(gluon.HybridBlock, metaclass=abc.ABCMeta):
             The number of epochs to train.
         callbacks : sequence of Callback, default None
             The callbacks to run during training.
+        log_filename : str, default None
+            The path to a log file.
+            If None, callbacks' default options can still print or save some logs. See
+            docs of the callbacks used.
+        log_verbose : bool, default False
+            If `log_filename` is specified, whether to additionally print logs to stdout.
         """
         # The named arguments required by callbacks on epoch/batch calls.
         init_params = {
@@ -178,8 +186,16 @@ class SMILESEncoderDecoderABC(gluon.HybridBlock, metaclass=abc.ABCMeta):
             'batch_no', 'batch', 'loss', 'predictions', 'outputs'
         ])
         callbacks = callbacks or []
+        callback_list: Optional[CallbackList] = None
+        log_handler: Optional[TextIO] = None
 
         try:
+            if log_filename is not None:
+                log_handler = open(log_filename, 'w')
+
+            callback_list = CallbackList(log_handler, verbose=log_verbose)
+            callback_list.add(*callbacks)
+
             self.hybridize()
 
             trainer = gluon.Trainer(self.collect_params(), optimizer)
@@ -188,8 +204,7 @@ class SMILESEncoderDecoderABC(gluon.HybridBlock, metaclass=abc.ABCMeta):
             for epoch in range(1, n_epochs + 1):
 
                 init_params['epoch'] = epoch
-                for callback in callbacks:
-                    callback.on_epoch_begin(**init_params)
+                callback_list.on_epoch_begin(**init_params)
 
                 states: Optional[List[mx.np.ndarray]] = None
 
@@ -205,8 +220,7 @@ class SMILESEncoderDecoderABC(gluon.HybridBlock, metaclass=abc.ABCMeta):
 
                     train_params['batch_no'] = batch_no
                     train_params['batch'] = batch
-                    for callback in callbacks:
-                        callback.on_batch_begin(**init_params, **train_params)
+                    callback_list.on_batch_begin(**init_params, **train_params)
 
                     with autograd.record():
                         predictions, states = self.forward(batch.inputs, states)
@@ -219,14 +233,19 @@ class SMILESEncoderDecoderABC(gluon.HybridBlock, metaclass=abc.ABCMeta):
                     train_params['loss'] = loss
                     train_params['predictions'] = predictions
                     train_params['outputs'] = batch.outputs
-                    for callback in callbacks:
-                        callback.on_batch_end(**init_params, **train_params)
+                    callback_list.on_batch_end(**init_params, **train_params)
 
                 init_params['model'] = self
-                for callback in callbacks:
-                    callback.on_epoch_end(**init_params, **train_params)
+                callback_list.on_epoch_end(**init_params, **train_params)
 
         except KeyboardInterrupt:
             init_params['model'] = self
-            for callback in callbacks:
-                callback.on_keyboard_interrupt(**init_params)
+            # If keyboard interrupt was not triggered before the callback list
+            # initialization.
+            if callback_list is not None:
+                callback_list.on_keyboard_interrupt(**init_params)
+
+        finally:
+            # If `log_handler` is a file-like and was opened.
+            if log_handler is not None:
+                log_handler.close()
