@@ -102,7 +102,7 @@ class EpochMetricScorer(Callback):
     metrics : CompositeMetric or sequence of Metric
         The metrics to calculate at the end of an epoch on a set of generated
         compounds (e.g. RAC).
-    predictor : GreedySearch
+    predictor : BaseSearch
         A SMILES string predictor.
     n_predictions : int, default 1000
         The number of SMILES strings to generate.
@@ -425,7 +425,7 @@ class Generator(Callback):
         The name of a file to save predictions. If `epoch` is None, then the full file
         name will be `filename.csv`. Otherwise, every file will have the name
         `filename_epoch_{epoch}.csv`.
-    predictor : GreedySearch
+    predictor : BaseSearch
         A SMILES string predictor.
     n_predictions : int, default 1000
         The number of compounds to generate.

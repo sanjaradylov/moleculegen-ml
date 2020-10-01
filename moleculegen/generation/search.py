@@ -139,7 +139,7 @@ class BaseSearch:
         return self._normalizer
 
     @property
-    def distribution(self) -> Callable[..., mx.np.ndarray]:
+    def distribution(self) -> Callable[..., int]:
         return self._distribution
 
     def _np_token_data(self, token_id: List[int]) -> mx.np.ndarray:

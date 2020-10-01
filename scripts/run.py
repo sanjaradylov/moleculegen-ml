@@ -14,24 +14,26 @@ import pathlib
 from typing import Optional
 
 import mxnet as mx
-from mxnet import gluon
-from rdkit.RDLogger import DisableLog
+from sklearn.manifold import TSNE
 
 import moleculegen as mg
 
 
 def main():
     """Main function:
-    - load data for training and fine-tuning;
+    - load data for training;
     - load a model configuration and a vocabulary from a checkpoint;
     - train an encoder-decoder model on the training data and monitor the progress;
+    - generate descriptors for training and test sets and save t-SNE projection;
+    - load data for fine-tuning;
     - fine-tune the model on the fine-tuning data and monitor the progress.
     """
     options = process_options()
 
-    stage1_dataset = mg.data.SMILESDataset(filename=options.stage1_data)
+    # Data loaders for training.
+    stage1_data = mg.data.SMILESDataset(filename=options.stage1_data)
     stage1_vocab = mg.data.SMILESVocabulary(
-        load_from_pickle=f'{options.checkpoint}/stage1_vocabulary.pkl',
+        load_from_pickle=f'{options.checkpoint}/vocabulary.pkl',
     )
     stage1_sequence_sampler = mg.data.SMILESConsecutiveSampler(
         stage1_vocab.corpus,
@@ -44,8 +46,86 @@ def main():
         last_batch='rollover',
     )
 
-    stage2_dataset = mg.data.SMILESDataset(filename=options.stage2_data)
-    stage2_corpus = stage1_vocab.get_token_id_corpus(stage2_dataset)
+    model = mg.estimation.SMILESEncoderDecoder.from_config(
+        f'{options.checkpoint}/config.json',
+    )
+    # A compound generator and RUAC metric.
+    predictor = mg.generation.SoftmaxSearch(
+        model=model,
+        vocabulary=stage1_vocab,
+        prefix=options.prefix,
+        max_length=options.max_length,
+        temperature=options.temperature,
+    )
+    train_dataset = [mg.Token.crop(smiles) for smiles in stage1_data]
+    ruac = mg.evaluation.RAC(name='RUAC', count_unique=True)
+
+    # Callbacks for training.
+    epoch_metric_scorer = mg.callback.EpochMetricScorer(
+        metrics=[
+            mg.evaluation.Novelty(),
+            mg.evaluation.Uniqueness(),
+            mg.evaluation.Validity(),
+        ],
+        predictor=predictor,
+        n_predictions=options.n_predictions,
+        train_dataset=train_dataset,
+    )
+    progressbar = mg.callback.ProgressBar()
+    early_stopping = mg.callback.EarlyStopping(
+        min_delta=0.003,
+        patience=3,
+        restore_best_weights=True,
+    )
+    generator = mg.callback.Generator(
+        filename=f'{options.checkpoint}/predictions_stage1',
+        predictor=predictor,
+        metric=ruac,
+        on_interrupt=True,
+        n_predictions=options.n_predictions*10,
+        train_dataset=train_dataset,
+    )
+    plotter = mg.callback.PhysChemDescriptorPlotter(
+        transformer=TSNE(n_components=2),
+        train_data=[
+            mg.Token.crop(s) for s in stage1_data.take(options.n_predictions*10)
+        ],
+        image_file_prefix=f'{options.checkpoint}/descriptors_stage1',
+        valid_data_file_prefix=f'{options.checkpoint}/predictions_stage1',
+    )
+    callbacks = [
+        progressbar,
+        epoch_metric_scorer,
+        early_stopping,
+        generator,
+        plotter,
+    ]
+
+    # An optimizer, loss function, and learning rate scheduler.
+    lr_scheduler = mx.lr_scheduler.CosineScheduler(
+        max_update=options.n_epochs*len(stage1_batch_sampler),
+        base_lr=options.learning_rate,
+        final_lr=0.0005,
+    )
+    optimizer = mx.optimizer.Adam(
+        learning_rate=options.learning_rate,
+        clip_gradient=options.grad_clip_length,
+        lr_scheduler=lr_scheduler,
+    )
+    loss_fn = mx.gluon.loss.SoftmaxCELoss()
+    # Train the main model.
+    # noinspection PyTypeChecker
+    model.fit(
+        batch_sampler=stage1_batch_sampler,
+        optimizer=optimizer,
+        loss_fn=loss_fn,
+        n_epochs=options.n_epochs,
+        callbacks=callbacks,
+    )
+
+    # Data loaders for fine-tuning.
+    stage2_data = mg.data.SMILESDataset(filename=options.stage2_data)
+    stage2_corpus = stage1_vocab.get_token_id_corpus(stage2_data)
     stage2_sequence_sampler = mg.data.SMILESConsecutiveSampler(
         stage2_corpus,
         n_steps=options.n_steps,
@@ -53,95 +133,77 @@ def main():
     )
     stage2_batch_sampler = mg.data.SMILESBatchSampler(
         stage2_sequence_sampler,
-        batch_size=options.batch_size,
+        batch_size=options.batch_size_fine_tune,
         last_batch='rollover',
     )
 
-    predictor = mg.generation.GreedySearch(ctx=lambda a: a.as_in_ctx(model.ctx))
-
-    stage1_epoch_metric_scorer = mg.callback.EpochMetricScorer(
+    # Callbacks for fine-tuning.
+    train_dataset = [
+        mg.Token.crop(smiles)
+        for smiles in itertools.chain(stage1_data, stage2_data)
+    ]
+    epoch_metric_scorer = mg.callback.EpochMetricScorer(
         metrics=[
-            mg.evaluation.RAC(name='RUAC', count_unique=True),
+            mg.evaluation.Novelty(),
+            mg.evaluation.Uniqueness(),
+            mg.evaluation.Validity(),
+            ruac,
         ],
         predictor=predictor,
-        vocabulary=stage1_vocab,
-        train_dataset=[mg.Token.crop(smiles) for smiles in stage1_dataset],
+        n_predictions=options.n_predictions,
+        train_dataset=train_dataset,
     )
-    progressbar = mg.callback.ProgressBar()
-    early_stopping = mg.callback.EarlyStopping(
-        min_delta=0.002,
-        patience=3,
-        restore_best_weights=True,
+    batch_metric_scorer = mg.callback.BatchMetricScorer(
+        metrics=[mg.evaluation.Perplexity()],
     )
-    stage1_callbacks = [
-        stage1_epoch_metric_scorer,
+    generator = mg.callback.Generator(
+        filename=f'{options.checkpoint}/predictions_stage2',
+        predictor=predictor,
+        metric=ruac,
+        on_interrupt=False,
+        epoch=1,
+        n_predictions=options.n_predictions//10,
+        train_dataset=train_dataset,
+    )
+    plotter = mg.callback.PhysChemDescriptorPlotter(
+        transformer=TSNE(n_components=2),
+        train_data=train_dataset[:options.n_predictions],
+        image_file_prefix=f'{options.checkpoint}/descriptors_stage2',
+        epoch=1,
+        valid_data_file_prefix=f'{options.checkpoint}/predictions_stage2',
+    )
+    callbacks = [
         progressbar,
-        early_stopping,
+        batch_metric_scorer,
+        epoch_metric_scorer,
+        generator,
+        plotter,
     ]
-    lr_scheduler = mx.lr_scheduler.FactorScheduler(
-        factor=0.8,
-        stop_factor_lr=1e-5,
-        base_lr=options.learning_rate,
-        step=len(stage1_batch_sampler),
+
+    # An optimizer, loss function, and learning rate scheduler.
+    lr_scheduler = mx.lr_scheduler.CosineScheduler(
+        max_update=options.n_epochs_fine_tune * len(stage2_batch_sampler),
+        base_lr=options.learning_rate_fine_tune,
+        final_lr=1e-5,
     )
     optimizer = mx.optimizer.Adam(
-        learning_rate=options.learning_rate,
+        learning_rate=options.learning_rate_fine_tune,
         clip_gradient=options.grad_clip_length,
         lr_scheduler=lr_scheduler,
     )
-    loss_fn = gluon.loss.SoftmaxCELoss()
-    model = mg.estimation.SMILESEncoderDecoder.from_config(
-        f'{options.checkpoint}/config.json',
-    )
-    # noinspection PyTypeChecker
-    model.fit(
-        batch_sampler=stage1_batch_sampler,
-        optimizer=optimizer,
-        loss_fn=loss_fn,
-        n_epochs=options.n_epochs,
-        callbacks=stage1_callbacks,
-    )
-
-    stage2_epoch_metric_scorer = mg.callback.EpochMetricScorer(
-        metrics=[
-            mg.evaluation.RAC(name='RUAC', count_unique=True),
-        ],
-        predictor=predictor,
-        vocabulary=stage1_vocab,
-        train_dataset=[
-            mg.Token.crop(smiles)
-            for smiles in itertools.chain(stage1_dataset, stage2_dataset)
-        ],
-    )
-    stage2_callbacks = [
-        stage2_epoch_metric_scorer,
-        progressbar,
-        early_stopping,
-    ]
-    lr_scheduler_fine_tune = mx.lr_scheduler.FactorScheduler(
-        factor=0.7,
-        stop_factor_lr=1e-6,
-        base_lr=options.learning_rate_fine_tune,
-        step=len(stage2_batch_sampler),
-    )
-    optimizer_fine_tune = mx.optimizer.Adam(
-        learning_rate=options.learning_rate_fine_tune,
-        clip_gradient=options.grad_clip_length,
-        lr_scheduler=lr_scheduler_fine_tune,
-    )
+    # Fine-tune the model.
     fine_tuner = mg.estimation.SMILESEncoderDecoderFineTuner(
         model=model,
         output_dim=len(stage1_vocab),
-        dense_dropout=0.25,
         ctx=model.ctx,
     )
     # noinspection PyTypeChecker
     fine_tuner.fit(
         batch_sampler=stage2_batch_sampler,
-        optimizer=optimizer_fine_tune,
+        optimizer=optimizer,
         loss_fn=loss_fn,
         n_epochs=options.n_epochs_fine_tune,
-        callbacks=stage2_callbacks,
+        callbacks=callbacks,
     )
 
 
@@ -202,7 +264,7 @@ def process_options() -> argparse.Namespace:
             setattr(namespace, self.dest, values)
 
     parser = argparse.ArgumentParser(
-        description='Train and fine-tune a language model on SMILES data.',
+        description='Train a language model on SMILES data.',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         add_help=False,
     )
@@ -241,31 +303,62 @@ def process_options() -> argparse.Namespace:
         '-l', '--learning_rate',
         help='The learning rate (training).',
         type=float,
-        default=0.005,
+        default=0.0025,
     )
     fit_options.add_argument(
         '-e', '--n_epochs',
         help='The number of epochs (training).',
         type=PositiveInteger,
-        default=20,
-    )
-    fit_options.add_argument(
-        '-L', '--learning_rate_fine_tune',
-        help='The learning rate (fine-tuning).',
-        type=float,
-        default=0.01,
-    )
-    fit_options.add_argument(
-        '-E', '--n_epochs_fine_tune',
-        help='The number of epochs (fine-tuning).',
-        type=PositiveInteger,
-        default=30,
+        default=2,
     )
     fit_options.add_argument(
         '-g', '--grad_clip_length',
         help="The radius by which a gradient's length is constrained.",
         type=float,
         default=8.0,
+    )
+    fit_options.add_argument(
+        '-L', '--learning_rate_fine_tune',
+        help='The learning rate (fine-tuning).',
+        type=float,
+        default=0.005,
+    )
+    fit_options.add_argument(
+        '-B', '--batch_size_fine_tune',
+        help='The number of batches to generate at every iteration (fine-tuning).',
+        type=PositiveInteger,
+        default=16,
+    )
+    fit_options.add_argument(
+        '-E', '--n_epochs_fine_tune',
+        help='The number of epochs (fine-tuning).',
+        type=PositiveInteger,
+        default=2,
+    )
+
+    generate_options = parser.add_argument_group('generation')
+    generate_options.add_argument(
+        '-n', '--n_predictions',
+        help='The number of compounds to generate.',
+        type=PositiveInteger,
+        default=1000,
+    )
+    generate_options.add_argument(
+        '-p', '--prefix',
+        help='The prefix of a SMILES string to generate.',
+        default=mg.Token.BOS,
+    )
+    generate_options.add_argument(
+        '-m', '--max_length',
+        help='The maximum number of tokens to generate.',
+        type=PositiveInteger,
+        default=80,
+    )
+    generate_options.add_argument(
+        '-t', '--temperature',
+        help='A sensitivity parameter',
+        type=float,
+        default=0.6,
     )
 
     other_options = parser.add_argument_group('other options')
@@ -285,6 +378,8 @@ def process_options() -> argparse.Namespace:
 
 
 if __name__ == '__main__':
+    from rdkit.RDLogger import DisableLog
+
     DisableLog('rdApp.*')
     mx.npx.set_np()
     main()
