@@ -47,10 +47,13 @@ def mlp(
         prefix=prefix if n_layers == 1 else None,
     )
 
-    if n_layers == 1:
+    if dropout <= 1e-3 and n_layers == 1:
         return output_dense
 
     net = gluon.nn.HybridSequential(prefix=prefix)
+
+    if dropout > 1e-3:
+        net.add(gluon.nn.Dropout(dropout))
 
     for _ in range(n_layers-1):
         net.add(gluon.nn.Dense(
