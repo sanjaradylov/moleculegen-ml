@@ -11,6 +11,9 @@ EpochMetricScorer
     Calculate and log metrics at the end of every epoch.
 Generator
     Generate, save, and optionally evaluate new compounds.
+PhysChemDescriptorPlotter
+    Project physicochemical descriptors of training and validation data into 2D using
+    sklearn-compatible transformers (e.g. `TSNE` or `PCA`) and plot every chosen epoch.
 ProgressBar
     Print progress bar every epoch of model training.
 """
@@ -20,6 +23,7 @@ __all__ = (
     'EarlyStopping',
     'EpochMetricScorer',
     'Generator',
+    'PhysChemDescriptorPlotter',
     'ProgressBar',
 )
 
@@ -33,14 +37,15 @@ import tempfile
 import time
 from typing import Deque, List, Optional, Sequence, Union
 
+import matplotlib.pyplot as plt
 import mxnet as mx
+from rdkit.Chem import MolFromSmiles
 
 from .base import Callback
-from ..base import Token
-from ..data.vocabulary import SMILESVocabulary
-from ..estimation.model import SMILESEncoderDecoder
+from ..description.base import get_descriptors_df
+from ..description.physicochemical import DESCRIPTOR_FUNCTIONS
 from ..evaluation.metric import CompositeMetric, Metric
-from ..generation.greedy_search import GreedySearch
+from ..generation.search import BaseSearch
 
 
 class BatchMetricScorer(Callback):
@@ -97,17 +102,9 @@ class EpochMetricScorer(Callback):
     metrics : CompositeMetric or sequence of Metric
         The metrics to calculate at the end of an epoch on a set of generated
         compounds (e.g. RAC).
-    predictor : GreedySearch
+    predictor : BaseSearch
         A SMILES string predictor.
-    vocabulary : SMILESVocabulary
-        The vocabulary to encode-decode tokens.
-    prefix : str, default: Token.BOS
-        The prefix of a SMILES string to generate
-    max_length : int, default: 80
-        The maximum number of tokens to generate.
-    temperature : float, default 1.0
-        A sensitivity parameter.
-    n_predictions : int, default 10000
+    n_predictions : int, default 1000
         The number of SMILES strings to generate.
     train_dataset : sequence of str, default None
         A dataset to compare the generated compounds with.
@@ -116,11 +113,7 @@ class EpochMetricScorer(Callback):
     def __init__(
             self,
             metrics: Union[Sequence[Metric], CompositeMetric],
-            predictor: GreedySearch,
-            vocabulary: SMILESVocabulary,
-            prefix: str = Token.BOS,
-            max_length: int = 80,
-            temperature: float = 1.0,
+            predictor: BaseSearch,
             n_predictions: int = 1000,
             train_dataset: Optional[Sequence[str]] = None,
     ):
@@ -130,12 +123,6 @@ class EpochMetricScorer(Callback):
             self.__metrics = metrics
 
         self.__predictor = predictor
-        self.__predictor_kwargs = {
-            'vocabulary': vocabulary,
-            'prefix': prefix,
-            'max_length': max_length,
-            'temperature': temperature,
-        }
         self.__n_predictions = n_predictions
         self.__train_dataset = train_dataset
 
@@ -152,15 +139,8 @@ class EpochMetricScorer(Callback):
         Expected named arguments:
             - model
         """
-        model: SMILESEncoderDecoder = fit_kwargs.get('model')
-
         for _ in range(self.__n_predictions):
-            states = model.begin_state(batch_size=1)
-            smiles = self.__predictor(
-                model=model,
-                states=states,
-                **self.__predictor_kwargs,
-            )
+            smiles = self.__predictor()
             self.__metrics.update(predictions=[smiles], labels=self.__train_dataset)
 
         results = ', '.join(
@@ -445,10 +425,8 @@ class Generator(Callback):
         The name of a file to save predictions. If `epoch` is None, then the full file
         name will be `filename.csv`. Otherwise, every file will have the name
         `filename_epoch_{epoch}.csv`.
-    predictor : GreedySearch
+    predictor : BaseSearch
         A SMILES string predictor.
-    vocabulary : SMILESVocabulary
-        The vocabulary to encode-decode tokens.
     n_predictions : int, default 1000
         The number of compounds to generate.
     epoch : int, default None
@@ -458,38 +436,33 @@ class Generator(Callback):
         Generate on keyboard interrupt
         (e.g. manual keyboard interrupt or early stopping).
     kwargs : dict, str -> any, default None
-        Additional key-word arguments for `predictor` and `metric`.
+        Additional key-word arguments for `metric`.
     """
 
     def __init__(
             self,
             filename: str,
-            predictor: GreedySearch,
-            vocabulary: SMILESVocabulary,
+            predictor: BaseSearch,
+            n_predictions: int = 1000,
             metric: Optional[Metric] = None,
             epoch: Optional[int] = None,
             on_interrupt: bool = False,
             **kwargs,
     ):
         self.__predictor = predictor
-        self.__vocabulary = vocabulary
+        self.__n_predictions = n_predictions
         self.__filename = filename
         self.__metric = metric
         self.__epoch = epoch
         self.__on_interrupt = on_interrupt
         self.__kwargs = kwargs
 
-    def _generate_and_save(
-            self,
-            model: SMILESEncoderDecoder,
-            epoch: Optional[int],
-    ):
+    def _generate_and_save(self, epoch: Optional[int]):
         """Generate and save predictions. If `metric` is specified, evaluate the
         predictions.
 
         Parameters
         ----------
-        model : SMILESEncoderDecoder
         epoch : int, default None
         """
         def generate() -> str:
@@ -499,15 +472,7 @@ class Generator(Callback):
             -------
             smiles : str
             """
-            states = model.begin_state(batch_size=1)
-            smiles = self.__predictor(
-                model=model,
-                states=states,
-                vocabulary=self.__vocabulary,
-                prefix=self.__kwargs.get('prefix', Token.BOS),
-                temperature=self.__kwargs.get('temperature', 0.65),
-                max_length=self.__kwargs.get('max_length', 80),
-            )
+            smiles = self.__predictor()
             fh.write(f'{smiles}\n')
 
             return smiles
@@ -516,7 +481,7 @@ class Generator(Callback):
         # times and evaluate them;
         if self.__metric is not None:
             def call():
-                for _ in range(self.__kwargs.get('n_predictions')):
+                for _ in range(self.__n_predictions):
                     self.__metric.update(
                         predictions=[generate()],
                         labels=self.__kwargs.get('train_dataset'),
@@ -527,7 +492,7 @@ class Generator(Callback):
         # otherwise, generate and save strings `n_predictions` times.
         else:
             def call():
-                for _ in range(self.__kwargs.get('n_predictions')):
+                for _ in range(self.__n_predictions):
                     generate()
 
         if epoch is not None:
@@ -562,13 +527,11 @@ class Generator(Callback):
         ----------
         Expected named arguments:
             - epoch
-            - model
         """
-        model = fit_kwargs.get('model')
         epoch = fit_kwargs.get('epoch')
 
         if epoch % self.__epoch == 0:
-            self._generate_and_save(model, epoch)
+            self._generate_and_save(epoch)
 
     def on_keyboard_interrupt(self, **fit_kwargs):
         """Optionally launch generation process on (keyboard) interrupt.
@@ -577,10 +540,113 @@ class Generator(Callback):
         ----------
         Expected named arguments:
             - epoch
-            - model
         """
-        model = fit_kwargs.get('model')
         epoch = fit_kwargs.get('epoch')
 
         if self.__on_interrupt:
-            self._generate_and_save(model, epoch)
+            self._generate_and_save(epoch)
+
+
+class PhysChemDescriptorPlotter(Callback):
+    """Project physicochemical descriptors of training and validation data into 2D using
+    sklearn-compatible transformers (e.g. `TSNE` or `PCA`) and plot every chosen epoch.
+
+    Parameters
+    ----------
+    transformer
+        A dimensionality reduction method supporting `fit_transform` and/or `transform`
+        methods.
+    train_data : list of str
+        A training SMILES data.
+    image_file_prefix : str
+        The prefix of saved images (e.g. if prefix is 'descriptors', then files will have
+        names 'descriptors_epoch_1.png', ..., 'descriptors_epoch_N.png').
+    epoch : int, default None
+        If None, plot only after the full training process.
+        If int, plot every `epoch`th epoch.
+    predictor : BaseSearch, default None
+        If not None, generate a validation SMILES data of size equalling to the training
+        data from this predictor.
+        Pass either `predictor` or `valid_data_file_prefix`.
+    valid_data_file_prefix : str, default None
+        If not None, load the validation data from files with names
+        '{valid_data_file_prefix}_epoch_{epoch}.csv'.
+        Pass either `predictor` or `valid_data_file_prefix`.
+    """
+
+    def __init__(
+            self,
+            transformer,
+            train_data: List[str],
+            image_file_prefix: str,
+            epoch: Optional[int] = None,
+            predictor: Optional[BaseSearch] = None,
+            valid_data_file_prefix: Optional[str] = None,
+    ):
+        if predictor is None and valid_data_file_prefix is None:
+            raise ValueError('pass either `predictor` or `valid_data_file_prefix`')
+
+        self._transformer = transformer
+        self._predictor = predictor
+        self._valid_data_file_prefix = valid_data_file_prefix
+        self._image_file_prefix = image_file_prefix
+        self._epoch = epoch
+
+        self._train_data_t = get_descriptors_df(train_data, DESCRIPTOR_FUNCTIONS)
+        self._train_data_t = self._transformer.fit_transform(self._train_data_t)
+
+    def on_epoch_begin(self, **fit_kwargs):
+        n_epochs = fit_kwargs.get('n_epochs')
+
+        if self._epoch is None:
+            self._epoch = n_epochs
+
+    def on_epoch_end(self, **fit_kwargs):
+        """Load or generate a validation SMILES data set, generate descriptors,
+        transform the descriptors into 2D, and save the scatter plot of train vs. valid
+        descriptors projection.
+
+        Parameters
+        ----------
+        Expected named arguments:
+            - epoch
+        """
+
+        def get_valid_data_desc():
+            if hasattr(self._transformer, 'transform'):
+                return self._transformer.transform(valid_data_desc)
+            return self._transformer.fit_transform(valid_data_desc)
+
+        def plot():
+            plt.figure(figsize=(10, 10))
+            plt.title(f'Phys.Chem Descriptors ({self._transformer.__class__.__name__})')
+            plt.scatter(
+                self._train_data_t[:, 0], self._train_data_t[:, 1],
+                label='Training', c='m', edgecolors='k', alpha=0.5,
+            )
+            plt.scatter(
+                valid_data_t[:, 0], valid_data_t[:, 1],
+                label='Generated', c='g', edgecolors='k', alpha=0.85,
+            )
+            plt.legend()
+            plt.savefig(f'{self._image_file_prefix}_epoch_{epoch}.png')
+
+        epoch = fit_kwargs.get('epoch')
+        if epoch % self._epoch == 0:
+
+            if self._valid_data_file_prefix is not None:
+                with open(f'{self._valid_data_file_prefix}_epoch_{epoch}.csv') as fh:
+                    valid_data_desc = get_descriptors_df(
+                        [s for s in fh.readlines() if MolFromSmiles(s) is not None],
+                        DESCRIPTOR_FUNCTIONS,
+                    )
+            else:
+                valid_data_desc = (
+                    self._predictor() for _ in range(self._train_data_t.shape[0])
+                )
+                valid_data_desc = [
+                    s for s in valid_data_desc if MolFromSmiles(s) is not None
+                ]
+
+            valid_data_t = get_valid_data_desc()
+            plot()
