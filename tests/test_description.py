@@ -1,5 +1,5 @@
 """
-Test fingerprint transformers.
+Test sklearn-compatible transformers.
 """
 
 import unittest
@@ -7,7 +7,7 @@ import unittest
 from numpy import ndarray
 from scipy.sparse import csr_matrix
 
-from moleculegen.description import MorganFingerprint
+from moleculegen.description import MoleculeTransformer, MorganFingerprint
 from .utils import SMILES_STRINGS
 
 
@@ -40,6 +40,18 @@ class ECFPTestCase(unittest.TestCase):
         mp.return_sparse = False
         ecfp = mp.transform(self.smiles_strings)
         self.assertIsInstance(ecfp, ndarray)
+
+
+class MoleculeTransformerTestCase(unittest.TestCase):
+    def setUp(self):
+        self.transformer = MoleculeTransformer()
+
+    def test_1_invalid(self):
+        compounds = SMILES_STRINGS.split('\n')
+        compounds.extend(['invalid', '#C%'])
+
+        with self.assertRaises(TypeError):
+            self.transformer.fit_transform(compounds)
 
 
 if __name__ == '__main__':

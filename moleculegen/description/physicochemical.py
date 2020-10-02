@@ -13,9 +13,12 @@ __all__ = (
 
 
 import array
-from typing import Dict, MutableSequence
+from numbers import Real
+from typing import Callable, Dict, MutableSequence
 
-from rdkit.Chem.rdMolDescriptors import CalcNumRotatableBonds, CalcTPSA
+from rdkit.Chem import Mol
+from rdkit.Chem.rdMolDescriptors import (
+    CalcNumAliphaticRings, CalcNumAromaticRings, CalcNumRotatableBonds, CalcTPSA)
 from rdkit.Chem.Crippen import MolLogP
 from rdkit.Chem.Descriptors import ExactMolWt
 from rdkit.Chem.GraphDescriptors import BertzCT
@@ -24,7 +27,7 @@ from rdkit.Chem.Lipinski import NumHAcceptors, NumHDonors
 from .base import get_descriptors
 
 
-DESCRIPTOR_FUNCTIONS = {
+DESCRIPTOR_FUNCTIONS: Dict[str, Callable[[Mol], Real]] = {
     '#BertzCT': BertzCT,
     '#RotatableBonds': CalcNumRotatableBonds,
     'TotalPolarSurfaceArea': CalcTPSA,
@@ -32,6 +35,8 @@ DESCRIPTOR_FUNCTIONS = {
     'LogP': MolLogP,
     '#HAcceptors': NumHAcceptors,
     '#HDonors': NumHDonors,
+    '#AliphaticRings': CalcNumAliphaticRings,
+    '#AromaticRings': CalcNumAromaticRings,
 }
 
 
