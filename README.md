@@ -1,12 +1,12 @@
 # moleculegen
 
 ![moleculegen](https://github.com/sanjaradylov/moleculegen-ml/workflows/moleculegen/badge.svg)
-![release](https://img.shields.io/github/release/sanjaradylov/moleculegen-ml.svg)
-![PythonVersion](https://img.shields.io/badge/python-3.7-blue)
-![issues](https://img.shields.io/github/issues/sanjaradylov/moleculegen-ml)
+[![release](https://img.shields.io/github/release/sanjaradylov/moleculegen-ml.svg)](https://github.com/sanjaradylov/moleculegen-ml/releases)
+[![PythonVersion](https://img.shields.io/badge/python-3.7-blue)](https://www.python.org/downloads/release/python-379/)
+[![issues](https://img.shields.io/github/issues/sanjaradylov/moleculegen-ml)](https://github.com/sanjaradylov/moleculegen-ml/issues)
 
 This project is an attempt to create a Python package for the complete *de novo* drug design
-cycle similar to [Segler et al](#reference).
+cycle similar to papers [Segler et al, Gupta et al, Brown et al.](#reference).
 
 In brief, the project comprises
 [two stages](https://github.com/sanjaradylov/moleculegen-ml/projects) of analysis.
@@ -82,3 +82,5 @@ $ python3 process_stage1_data.py -o ../data/stage1_compounds_post_processed.csv
 ## Reference
 
 1. Segler et al. Generating Focused Molecule Libraries for Drug Discovery with Recurrent Neural Networks. https://arxiv.org/pdf/1701.01329.pdf
+2. Gupta et al. Generative Recurrent Networks for De Novo Drug Design. DOI: 10.1002/minf.201700111
+3. Brown et al. GuacaMol: Benchmarking Models for de Novo Molecular Design. J. Chem. Inf. Model. 2019, 59, 1096−1108
