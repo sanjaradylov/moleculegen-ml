@@ -7,20 +7,25 @@ OneHotEncoder
     One-hot encoder functor.
 MoleculeTransformer
     Convert SMILES compounds into RDKit molecules.
+RDKitDescriptorTransformer
+    Calculate RDKit descriptors.
 """
 
 __all__ = (
     'OneHotEncoder',
     'MoleculeTransformer',
+    'RDKitDescriptorTransformer',
 )
+
 
 from typing import Iterable, List
 
 import mxnet as mx
-from rdkit.Chem import Mol
+from rdkit.Chem import Descriptors, Mol
 from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.utils import check_array
 
-from .base import check_compounds_valid
+from .base import check_compounds_valid, get_descriptor_df_from_mol
 
 
 class OneHotEncoder:
@@ -69,7 +74,6 @@ class MoleculeTransformer(BaseEstimator, TransformerMixin):
     def fit(self, compounds: Iterable[str], y_ignored=None) -> 'MoleculeTransformer':
         return self
 
-    # noinspection PyMethodMayBeStatic
     def transform(self, compounds: Iterable[str]) -> List[Mol]:
         """Convert SMILES compounds into RDKit molecules. Raise TypeError if there is an
         invalid compound.
@@ -88,5 +92,47 @@ class MoleculeTransformer(BaseEstimator, TransformerMixin):
         TypeError
             If any compound is invalid.
         """
+        check_array(
+            compounds,
+            accept_large_sparse=False,
+            dtype='object',
+            ensure_2d=False,
+        )
+
         return check_compounds_valid(
             compounds, raise_exception=True, **self.converter_kwargs)
+
+
+class RDKitDescriptorTransformer(BaseEstimator, TransformerMixin):
+    """Calculate RDKit descriptors.
+    """
+
+    # noinspection PyUnusedLocal
+    def fit(self, compounds: Iterable[str], y_ignored=None):
+        # noinspection PyAttributeOutsideInit
+        # noinspection PyProtectedMember
+        self.descriptor_names_ = tuple(name for name, func in Descriptors._descList)
+
+        return self
+
+    # noinspection PyMethodMayBeStatic
+    def transform(self, molecules: List[Mol]):
+        """Return a numpy array of calculated RDKit descriptors.
+
+        Parameters
+        ----------
+        molecules : list of rdkit.Chem.Mol
+            A list of RDKit molecules.
+
+        Returns
+        -------
+        descriptors : numpy.ndarray,
+                shape = (`len(molecules)`, `len(self.descriptor_names_)`)
+        """
+        # noinspection PyProtectedMember
+        descriptor_df = get_descriptor_df_from_mol(
+            molecules=molecules,
+            function_map=dict(Descriptors._descList),
+        )
+
+        return descriptor_df.values

@@ -1,6 +1,11 @@
 """
 Describe molecular feature space w/ encoders and feature transformers.
 
+Constants
+---------
+PHYSCHEM_DESCRIPTOR_MAP
+    Key - descriptor name, value - descriptor callable.
+
 Classes
 -------
 OneHotEncoder
@@ -10,6 +15,8 @@ MorganFingerprint
     Apply the Morgan algorithm to a set of compounds to get circular fingerprints.
 MoleculeTransformer
     Convert SMILES compounds into RDKit molecules.
+RDKitDescriptorTransformer
+    Calculate RDKit descriptors.
 
 
 Functions
@@ -34,6 +41,8 @@ __all__ = (
     'MoleculeTransformer',
     'MorganFingerprint',
     'OneHotEncoder',
+    'PHYSCHEM_DESCRIPTOR_MAP',
+    'RDKitDescriptorTransformer',
 )
 
 
@@ -45,10 +54,12 @@ from .base import (
 from .common import (
     MoleculeTransformer,
     OneHotEncoder,
+    RDKitDescriptorTransformer,
 )
 from .fingerprints import (
     MorganFingerprint,
 )
 from .physicochemical import (
+    PHYSCHEM_DESCRIPTOR_MAP,
     get_physchem_descriptors,
 )

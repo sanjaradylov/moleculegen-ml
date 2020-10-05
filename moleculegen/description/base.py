@@ -15,10 +15,12 @@ __all__ = (
     'check_compounds_valid',
     'get_descriptors',
     'get_descriptors_df',
+    'get_descriptor_df_from_mol',
 )
 
 
 import array
+from numbers import Real
 from typing import Callable, Dict, Iterable, List
 
 import pandas as pd
@@ -148,3 +150,16 @@ def get_descriptors(
         )
 
     return results
+
+
+def get_descriptor_df_from_mol(
+        molecules: Iterable[Mol],
+        function_map: Dict[str, Callable[[Mol], Real]],
+) -> pd.DataFrame:
+    data_frame = pd.DataFrame()
+
+    for name, function in function_map.items():
+        descriptor: List[Real] = [function(molecule) for molecule in molecules]
+        data_frame = data_frame.assign(**{name: descriptor})
+
+    return data_frame

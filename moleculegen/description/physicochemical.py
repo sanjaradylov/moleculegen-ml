@@ -1,6 +1,11 @@
 """
 Create physicochemical descriptors.
 
+Constants
+---------
+PHYSCHEM_DESCRIPTOR_MAP
+    Key - descriptor name, value - descriptor callable.
+
 Functions
 ---------
 get_physchem_descriptors
@@ -8,6 +13,7 @@ get_physchem_descriptors
 """
 
 __all__ = (
+    'PHYSCHEM_DESCRIPTOR_MAP',
     'get_physchem_descriptors',
 )
 
@@ -27,7 +33,7 @@ from rdkit.Chem.Lipinski import NumHAcceptors, NumHDonors
 from .base import get_descriptors
 
 
-DESCRIPTOR_FUNCTIONS: Dict[str, Callable[[Mol], Real]] = {
+PHYSCHEM_DESCRIPTOR_MAP: Dict[str, Callable[[Mol], Real]] = {
     '#BertzCT': BertzCT,
     '#RotatableBonds': CalcNumRotatableBonds,
     'TotalPolarSurfaceArea': CalcTPSA,
@@ -55,4 +61,4 @@ def get_physchem_descriptors(compounds: MutableSequence[str]) \
         A dictionary of descriptors, where keys are descriptor names and
         values are the calculated descriptors.
     """
-    return get_descriptors(compounds, DESCRIPTOR_FUNCTIONS)
+    return get_descriptors(compounds, PHYSCHEM_DESCRIPTOR_MAP)
