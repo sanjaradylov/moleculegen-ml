@@ -43,7 +43,7 @@ from rdkit.Chem import MolFromSmiles
 
 from .base import Callback
 from ..description.base import get_descriptors_df
-from ..description.physicochemical import DESCRIPTOR_FUNCTIONS
+from ..description.physicochemical import PHYSCHEM_DESCRIPTOR_MAP
 from ..evaluation.metric import CompositeMetric, Metric
 from ..generation.search import BaseSearch
 
@@ -592,7 +592,7 @@ class PhysChemDescriptorPlotter(Callback):
         self._image_file_prefix = image_file_prefix
         self._epoch = epoch
 
-        self._train_data_t = get_descriptors_df(train_data, DESCRIPTOR_FUNCTIONS)
+        self._train_data_t = get_descriptors_df(train_data, PHYSCHEM_DESCRIPTOR_MAP)
         self._train_data_t = self._transformer.fit_transform(self._train_data_t)
 
     def on_epoch_begin(self, **fit_kwargs):
@@ -638,7 +638,7 @@ class PhysChemDescriptorPlotter(Callback):
                 with open(f'{self._valid_data_file_prefix}_epoch_{epoch}.csv') as fh:
                     valid_data_desc = get_descriptors_df(
                         [s for s in fh.readlines() if MolFromSmiles(s) is not None],
-                        DESCRIPTOR_FUNCTIONS,
+                        PHYSCHEM_DESCRIPTOR_MAP,
                     )
             else:
                 valid_data_desc = (

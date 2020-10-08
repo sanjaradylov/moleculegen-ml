@@ -1,6 +1,11 @@
 """
 Create physicochemical descriptors.
 
+Constants
+---------
+PHYSCHEM_DESCRIPTOR_MAP
+    Key - descriptor name, value - descriptor callable.
+
 Functions
 ---------
 get_physchem_descriptors
@@ -8,14 +13,18 @@ get_physchem_descriptors
 """
 
 __all__ = (
+    'PHYSCHEM_DESCRIPTOR_MAP',
     'get_physchem_descriptors',
 )
 
 
 import array
-from typing import Dict, MutableSequence
+from numbers import Real
+from typing import Callable, Dict, MutableSequence
 
-from rdkit.Chem.rdMolDescriptors import CalcNumRotatableBonds, CalcTPSA
+from rdkit.Chem import Mol
+from rdkit.Chem.rdMolDescriptors import (
+    CalcNumAliphaticRings, CalcNumAromaticRings, CalcNumRotatableBonds, CalcTPSA)
 from rdkit.Chem.Crippen import MolLogP
 from rdkit.Chem.Descriptors import ExactMolWt
 from rdkit.Chem.GraphDescriptors import BertzCT
@@ -24,7 +33,7 @@ from rdkit.Chem.Lipinski import NumHAcceptors, NumHDonors
 from .base import get_descriptors
 
 
-DESCRIPTOR_FUNCTIONS = {
+PHYSCHEM_DESCRIPTOR_MAP: Dict[str, Callable[[Mol], Real]] = {
     '#BertzCT': BertzCT,
     '#RotatableBonds': CalcNumRotatableBonds,
     'TotalPolarSurfaceArea': CalcTPSA,
@@ -32,6 +41,8 @@ DESCRIPTOR_FUNCTIONS = {
     'LogP': MolLogP,
     '#HAcceptors': NumHAcceptors,
     '#HDonors': NumHDonors,
+    '#AliphaticRings': CalcNumAliphaticRings,
+    '#AromaticRings': CalcNumAromaticRings,
 }
 
 
@@ -50,4 +61,4 @@ def get_physchem_descriptors(compounds: MutableSequence[str]) \
         A dictionary of descriptors, where keys are descriptor names and
         values are the calculated descriptors.
     """
-    return get_descriptors(compounds, DESCRIPTOR_FUNCTIONS)
+    return get_descriptors(compounds, PHYSCHEM_DESCRIPTOR_MAP)
