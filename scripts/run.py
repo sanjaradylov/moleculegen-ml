@@ -50,7 +50,7 @@ def main():
         f'{options.checkpoint}/config.json',
     )
     # A compound generator and RUAC metric.
-    predictor = mg.generation.SoftmaxSearch(
+    predictor = mg.generation.GumbelSoftmaxSearch(
         model=model,
         vocabulary=stage1_vocab,
         prefix=options.prefix,
@@ -86,10 +86,8 @@ def main():
         train_dataset=train_dataset,
     )
     plotter = mg.callback.PhysChemDescriptorPlotter(
-        transformer=TSNE(n_components=2),
-        train_data=[
-            mg.Token.crop(s) for s in stage1_data.take(options.n_predictions*10)
-        ],
+        transformer=TSNE(n_components=2, n_jobs=-1),
+        train_data=train_dataset[:10_000],
         image_file_prefix=f'{options.checkpoint}/descriptors_stage1',
         valid_data_file_prefix=f'{options.checkpoint}/predictions_stage1',
     )
@@ -162,12 +160,12 @@ def main():
         metric=ruac,
         on_interrupt=False,
         epoch=1,
-        n_predictions=options.n_predictions//10,
+        n_predictions=len(stage2_data),
         train_dataset=train_dataset,
     )
     plotter = mg.callback.PhysChemDescriptorPlotter(
-        transformer=TSNE(n_components=2),
-        train_data=train_dataset[:options.n_predictions],
+        transformer=TSNE(n_components=2, n_jobs=-1),
+        train_data=train_dataset[:10_000],
         image_file_prefix=f'{options.checkpoint}/descriptors_stage2',
         epoch=1,
         valid_data_file_prefix=f'{options.checkpoint}/predictions_stage2',
@@ -182,7 +180,7 @@ def main():
 
     # An optimizer, loss function, and learning rate scheduler.
     lr_scheduler = mx.lr_scheduler.CosineScheduler(
-        max_update=options.n_epochs_fine_tune * len(stage2_batch_sampler),
+        max_update=options.n_epochs_fine_tune*len(stage2_batch_sampler),
         base_lr=options.learning_rate_fine_tune,
         final_lr=1e-5,
     )
@@ -225,18 +223,10 @@ def process_options() -> argparse.Namespace:
             If requirement is not satisfied.
         """
 
-        def __new__(
-                cls,
-                value: int,
-                *args,
-                **kwargs
-        ) -> int:
-            try:
-                value = int(value)
-                if value <= 0:
-                    raise ValueError
-            except ValueError:
-                raise
+        def __new__(cls, value: int, *args, **kwargs) -> int:
+            value = int(value)
+            if value <= 0:
+                raise ValueError
 
             return super().__new__(cls, value, *args, **kwargs)
 
@@ -309,7 +299,7 @@ def process_options() -> argparse.Namespace:
         '-e', '--n_epochs',
         help='The number of epochs (training).',
         type=PositiveInteger,
-        default=2,
+        default=6,
     )
     fit_options.add_argument(
         '-g', '--grad_clip_length',
@@ -333,7 +323,7 @@ def process_options() -> argparse.Namespace:
         '-E', '--n_epochs_fine_tune',
         help='The number of epochs (fine-tuning).',
         type=PositiveInteger,
-        default=2,
+        default=8,
     )
 
     generate_options = parser.add_argument_group('generation')

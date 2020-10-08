@@ -34,10 +34,19 @@ class MorganFingerprint(BaseEstimator, TransformerMixin):
         The number of bits.
     return_sparse : bool, default False
         Whether to return csr-sparse matrix or numpy array.
+
+    Examples
+    --------
+    >>> import moleculegen as mg
+    >>> molecule_tr = mg.description.MoleculeTransformer()
+    >>> ecfp_tr = mg.description.MorganFingerprint(n_bits=1024)
+    >>> from sklearn.pipeline import make_pipeline
+    >>> pipe = make_pipeline(molecule_tr, ecfp_tr)
     """
 
     def __init__(
             self,
+            *,
             radius: int = 4,
             n_bits: int = 2048,
             return_sparse: bool = False,
@@ -63,6 +72,8 @@ class MorganFingerprint(BaseEstimator, TransformerMixin):
         """
         check_scalar(self.radius, 'radius', int, min_val=1)
         check_scalar(self.n_bits, 'number of bits', int, min_val=1)
+        # noinspection PyAttributeOutsideInit
+        self.n_features_in_ = 1
 
         return self
 

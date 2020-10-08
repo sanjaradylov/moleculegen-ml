@@ -72,6 +72,9 @@ class MoleculeTransformer(BaseEstimator, TransformerMixin):
 
     # noinspection PyUnusedLocal
     def fit(self, compounds: Iterable[str], y_ignored=None) -> 'MoleculeTransformer':
+        # noinspection PyAttributeOutsideInit
+        self.n_features_in_ = 1
+
         return self
 
     def transform(self, compounds: Iterable[str]) -> List[Mol]:
@@ -105,6 +108,14 @@ class MoleculeTransformer(BaseEstimator, TransformerMixin):
 
 class RDKitDescriptorTransformer(BaseEstimator, TransformerMixin):
     """Calculate RDKit descriptors.
+
+    Examples
+    --------
+    >>> import moleculegen as mg
+    >>> molecule_tr = mg.description.MoleculeTransformer()
+    >>> rdkit_descriptor_tr = mg.description.RDKitDescriptorTransformer()
+    >>> from sklearn.pipeline import make_pipeline
+    >>> pipe = make_pipeline(molecule_tr, rdkit_descriptor_tr)
     """
 
     # noinspection PyUnusedLocal
@@ -112,6 +123,8 @@ class RDKitDescriptorTransformer(BaseEstimator, TransformerMixin):
         # noinspection PyAttributeOutsideInit
         # noinspection PyProtectedMember
         self.descriptor_names_ = tuple(name for name, func in Descriptors._descList)
+        # noinspection PyAttributeOutsideInit
+        self.n_features_in_ = 1
 
         return self
 
