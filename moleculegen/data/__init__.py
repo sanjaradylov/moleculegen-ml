@@ -12,6 +12,8 @@ SMILESConsecutiveSampler
 
 SMILESDataset
     Load text data set containing SMILES strings.
+SMILESTargetDataset
+    SMILES-Activity dataset.
 
 SMILESVocabulary
     Map SMILES characters into their numerical representation.
@@ -29,12 +31,14 @@ __all__ = (
     'SMILESBatchColumnSampler',
     'SMILESConsecutiveSampler',
     'SMILESDataset',
+    'SMILESTargetDataset',
     'SMILESVocabulary',
 )
 
 
 from .loader import (
     SMILESDataset,
+    SMILESTargetDataset,
 )
 from .sampler import (
     SMILESBatchSampler,
