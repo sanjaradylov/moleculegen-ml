@@ -139,7 +139,7 @@ class RDKitDescriptorTransformer(BaseEstimator, TransformerMixin):
 
         Returns
         -------
-        descriptors : numpy.ndarray,
+        descriptors : pandas.DataFrame,
                 shape = (`len(molecules)`, `len(self.descriptor_names_)`)
         """
         # noinspection PyProtectedMember
@@ -148,4 +148,4 @@ class RDKitDescriptorTransformer(BaseEstimator, TransformerMixin):
             function_map=dict(Descriptors._descList),
         )
 
-        return descriptor_df.values
+        return descriptor_df
