@@ -19,9 +19,10 @@ __all__ = (
 
 
 import collections
+import functools
 import itertools
 import pickle
-from typing import Counter, Dict, Generator, List, Optional, Sequence, Union
+from typing import Counter, Dict, FrozenSet, Generator, List, Optional, Sequence, Union
 
 from mxnet.gluon.data import SimpleDataset
 
@@ -48,6 +49,16 @@ class SMILESVocabulary:
     need_corpus : bool, default False
         If True, load `corpus`property of token IDs for every SMILES sequence.
         Pass non-empty `dataset` or `tokens`.
+    min_count : int, default 1
+        The minimum number of token occurrences. If the frequency of a token is less than
+        `min_count`, then the SMILES string containing this token will not be saved in a
+        corpus.
+        The parameter will be ignored if `load_from_pickle` is passed.
+
+        ??? Note that while ignoring tokens and corresponding SMILES strings, we keep the
+        statistics of the whole data in `dataset`. We do not recalculate the numbers even
+        when encountering redundant tokens.
+
     load_from_pickle : str, default None
         If passed, load all the attributes from the file named `load_from_pickle`.
 
@@ -83,6 +94,7 @@ class SMILESVocabulary:
             dataset: Optional[SimpleDataset] = None,
             tokens: Optional[List[List[str]]] = None,
             need_corpus: bool = False,
+            min_count: int = 1,
             load_from_pickle: Optional[str] = None,
     ):
         self._corpus: Optional[List[List[int]]] = None
@@ -108,6 +120,16 @@ class SMILESVocabulary:
                 or [Token.tokenize(sample) for sample in dataset]
             )
             counter: Counter[str] = count_tokens(tokens)
+            redundant_tokens: FrozenSet[str] = frozenset(
+                token
+                for token, count in counter.items()
+                if count < min_count
+            )
+            # All numbers counts will remain the same (see docs).
+            for token in redundant_tokens:
+                counter.pop(token)
+            has_redundant_tokens = functools.partial(
+                has_tokens, token_set=redundant_tokens)
 
             self._token_freqs: Dict[str, int] = dict(sorted(
                 counter.items(), key=lambda c: c[1], reverse=True))
@@ -122,7 +144,9 @@ class SMILESVocabulary:
                 self._token_to_idx[token] = len(self._token_to_idx)
 
             if need_corpus:
-                self._corpus: List[List[int]] = [self[line] for line in tokens]
+                self._corpus: List[List[int]] = [
+                    self[line] for line in tokens if not has_redundant_tokens(line)
+                ]
 
     def __repr__(self) -> str:
         tokens = ''
@@ -320,3 +344,13 @@ def count_tokens(tokens: List[List[str]]) -> Counter[str]:
     tokens_flattened = itertools.chain(*tokens)
     tokens_counter = collections.Counter(tokens_flattened)
     return tokens_counter
+
+
+def has_tokens(
+        smiles_list: List[str],
+        token_set: FrozenSet[str],
+) -> bool:
+    for token in smiles_list:
+        if token in token_set:
+            return True
+    return False
