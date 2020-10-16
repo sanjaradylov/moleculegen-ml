@@ -83,9 +83,9 @@ class TokenTestCase(unittest.TestCase):
 
     def test_tokenize(self):
 
-        def test(smiles):
+        def test(smiles, find_brackets=False):
             self.assertListEqual(
-                Token.tokenize(''.join(smiles)),
+                Token.tokenize(''.join(smiles), find_brackets=find_brackets),
                 smiles
             )
 
@@ -100,7 +100,11 @@ class TokenTestCase(unittest.TestCase):
         test(['C', 'N', 'C', 'n', 'o', 'Cl', 'C', 'Cl', 'O'])
 
         # Subcompound tokens.
-        test(['N', '[C@H]', '(', 'C', ')', 'C', '(', '=', 'O', ')', 'O'])
+        test(['N', '@@', '(', 'C', ')', 'C', '(', '=', 'O', ')', 'O', '10'])
+
+        # Includes subcompounds in square brackets.
+        test(['c', '1', 'c', 'n', 'c', '[nH]', 'c', '(', '=', 'O', ')', '1'], True)
+        test(['c', '1', 'c', 'n', 'c', '[', 'n', 'H', ']', 'c', '(', '=', 'O', ')', '1'])
 
 
 if __name__ == '__main__':

@@ -18,6 +18,7 @@ __all__ = (
 
 
 import functools
+import re
 from typing import Any, Callable, FrozenSet, List, Optional
 from mxnet import nd, np
 
@@ -51,7 +52,7 @@ class Token:
 
     # Subcompounds.
     AGGREGATE = frozenset([
-        '[C@H]', '[C@@H]', '@@', '10'
+        '@@', '10'
     ])
 
     # Special tokens not presented in the SMILES vocabulary.
@@ -138,19 +139,25 @@ class Token:
         return modified_smiles
 
     @classmethod
-    def tokenize(cls, smiles: str) -> Optional[List[str]]:
+    def tokenize(
+            cls,
+            smiles: str,
+            find_brackets: bool = False,
+    ) -> List[str]:
         """Tokenize `smiles` string.
 
         Parameters
         ----------
         smiles : str
             SMILES string.
+        find_brackets : bool, default False
+            Whether to treat the subcompounds enclosed in [] as separate tokens.
 
         Returns
         -------
-        tokens : list of str or None
-            None, if at least one character not from cls.
-            list of tokens from cls, otherwise.
+        tokens : list of str
+            An empty list, if at least one character not from `cls`.
+            A list of tokens from `cls`, otherwise.
 
         TODO:
         Notes
@@ -161,6 +168,32 @@ class Token:
         single entities. To comprehend how to tokenize universally and
         effectively, some research on the domain topic is required.
         """
+        if find_brackets:
+            token_list: List[str] = []
+
+            for subcompound in cls._BRACKETS_RE.split(smiles):
+                if subcompound.startswith('['):
+                    token_list.append(subcompound)
+                else:
+                    token_list.extend(cls._tokenize(subcompound))
+
+            return token_list
+        else:
+            return cls._tokenize(smiles)
+
+    _BRACKETS_RE = re.compile(
+        pattern=r"""
+            (?P<brackets>     # Begin a capture group.
+                \[            # Match opening bracket square to capture an atom.
+                    [^\[\]]+  # Match atoms, charges, etc., except '[' and ']'.
+                \]            # Match closing bracket square to capture an atom.
+            )                 # End a capture group.
+        """,
+        flags=re.VERBOSE,
+    )
+
+    @classmethod
+    def _tokenize(cls, smiles: str) -> List[str]:
         token_list: List[str] = []  # The resulting list of tokens.
 
         char_no = 0  # Points to the current position.
