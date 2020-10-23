@@ -249,6 +249,7 @@ class SMILESEncoderDecoder(SMILESEncoderDecoderABC):
         return cls(
             vocab_size=raw_data['vocab_size'],
             initialize=raw_data['initialize'],
+            tie_weights=raw_data['tie_weights'],
             dtype=raw_data['dtype'],
             ctx=_gluon_common.CTX_MAP[raw_data['ctx'].lower()],
             prefix=raw_data['prefix'],
