@@ -72,6 +72,8 @@ class SMILESEncoderDecoder(SMILESEncoderDecoderABC):
         The parameter initializer of a dense layer.
     dense_prefix : str, default 'decoder_'
         The prefix of a decoder block.
+    tie_weights : bool, default False
+        Whether to share the embedding block parameters w/ a decoder block.
     dtype : str, default 'float32'
         Data type.
     ctx : mxnet.context.Context, default mxnet.context.cpu()
@@ -115,6 +117,7 @@ class SMILESEncoderDecoder(SMILESEncoderDecoderABC):
             dense_dropout: float = 0.,
             dense_init: Optional[Union[str, mx.init.Initializer]] = mx.init.Xavier(),
             dense_prefix: str = 'decoder_',
+            tie_weights: bool = False,
             dtype: Optional[str] = 'float32',
             *,
             ctx: mx.context.Context = mx.context.cpu(),
@@ -146,6 +149,20 @@ class SMILESEncoderDecoder(SMILESEncoderDecoderABC):
                 'The number of dense layers must be positive non-zero.'
             )
 
+        if (
+                tie_weights
+                and (
+                    embedding_dim != n_rnn_units
+                    or
+                    n_dense_layers > 1
+                    and embedding_dim != n_dense_units
+                )
+        ):
+            raise ValueError(
+                f'When sharing weights, the number of hidden units must be equal to '
+                f'the embedding dimension.'
+            )
+
         # Initialize mxnet.gluon.Block parameters.
         super().__init__(ctx=ctx, prefix=prefix, params=params)
 
@@ -166,8 +183,10 @@ class SMILESEncoderDecoder(SMILESEncoderDecoderABC):
                     self._embedding = gluon.nn.HybridSequential(prefix=seq_prefix)
                     self._embedding.add(embedding_block)
                     self._embedding.add(gluon.nn.Dropout(embedding_dropout))
+                    shared_params = self._embedding[0].params if tie_weights else None
                 else:
                     self._embedding = embedding_block
+                    shared_params = self._embedding.params if tie_weights else None
 
                 if initialize:
                     self._embedding.initialize(init=embedding_init, ctx=ctx)
@@ -192,6 +211,7 @@ class SMILESEncoderDecoder(SMILESEncoderDecoderABC):
                 dtype=dtype,
                 dropout=dense_dropout,
                 prefix=dense_prefix,
+                params=shared_params,
             )
             if initialize:
                 self._decoder.initialize(init=dense_init, ctx=ctx)
@@ -258,6 +278,7 @@ class SMILESEncoderDecoder(SMILESEncoderDecoderABC):
     def load_fine_tuner(
             cls,
             path: str,
+            update_features: bool = True,
             decoder_init: Optional[Union[str, mx.init.Initializer]] = mx.init.Xavier(),
     ) -> 'SMILESEncoderDecoder':
         """Create a new fine-tuner model: load model configuration and parameters, and
@@ -269,6 +290,8 @@ class SMILESEncoderDecoder(SMILESEncoderDecoderABC):
             The path to the directory of model configuration and parameters.
             path/config.json - the formal parameters of a model;
             path/weights.params - the parameters of a model.
+        update_features : bool, default True
+            Whether to update embedding and encoder parameters during training.
         decoder_init : str or mxnet.init.Initializer, default None
             A decoder initializer.
 
@@ -278,6 +301,11 @@ class SMILESEncoderDecoder(SMILESEncoderDecoderABC):
         """
         model = cls.from_config(f'{path}/config.json')
         model.load_parameters(f'{path}/weights.params', ctx=model.ctx)
+
+        if not update_features:
+            model.embedding.collect_params().setattr('grad_req', 'null')
+            model.encoder.collect_params().setattr('grad_req', 'null')
+
         model.decoder.initialize(init=decoder_init, force_reinit=True, ctx=model.ctx)
 
         return model
@@ -295,6 +323,8 @@ class SMILESEncoderDecoderFineTuner(SMILESEncoderDecoderABC):
         The number of output neurons.
     initialize : bool, default True
         Whether to initialize decoder's parameters.
+    update_features : bool, default True
+        Whether to update embedding and encoder parameters during training.
     n_dense_layers : int, default 1
         The number of dense layers.
     n_dense_units : int, default 128
@@ -334,6 +364,7 @@ class SMILESEncoderDecoderFineTuner(SMILESEncoderDecoderABC):
             model: SMILESEncoderDecoder,
             output_dim: int,
             initialize: bool = True,
+            update_features: bool = True,
             n_dense_layers: int = 1,
             n_dense_units: int = 128,
             dense_activation: str = 'relu',
@@ -353,6 +384,10 @@ class SMILESEncoderDecoderFineTuner(SMILESEncoderDecoderABC):
         self._embedding = model.embedding
         self._encoder = model.encoder
 
+        if not update_features:
+            self._embedding.collect_params().setattr('grad_req', 'null')
+            self._encoder.collect_params().setattr('grad_req', 'null')
+
         self._decoder = _gluon_common.mlp(
             n_layers=n_dense_layers,
             n_units=n_dense_units,
@@ -361,6 +396,7 @@ class SMILESEncoderDecoderFineTuner(SMILESEncoderDecoderABC):
             dtype=dtype,
             dropout=dense_dropout,
             prefix=dense_prefix,
+            params=None,
         )
         if initialize:
             self._decoder.initialize(init=dense_init, ctx=self.ctx)

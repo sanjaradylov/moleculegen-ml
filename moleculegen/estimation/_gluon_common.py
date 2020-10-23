@@ -2,7 +2,7 @@
 Gluon objects and sequential models used in the subpackage.
 """
 
-from typing import Dict
+from typing import Dict, Optional
 
 import mxnet as mx
 from mxnet import gluon
@@ -37,6 +37,7 @@ def mlp(
         dtype: str,
         dropout: float,
         prefix: str,
+        params: Optional[mx.gluon.ParameterDict],
 ) -> gluon.Block:
     """A single dense layer or an MLP built with mxnet.gluon.nn.HybridSequential.
     """
@@ -45,6 +46,7 @@ def mlp(
         dtype=dtype,
         flatten=False,
         prefix=prefix if n_layers == 1 else None,
+        params=params,
     )
 
     if dropout <= 1e-3 and n_layers == 1:
