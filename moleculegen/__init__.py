@@ -17,7 +17,6 @@ __all__ = (
     'generation',
 
     # Classes.
-    'StateInitializerMixin',
     'Token',
 )
 
@@ -30,6 +29,5 @@ from . import evaluation
 from . import generation
 
 from .base import (
-    StateInitializerMixin,
     Token,
 )

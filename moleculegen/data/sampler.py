@@ -9,30 +9,38 @@ SMILESBatchSampler
     Generate batches of SMILES sequences using specified sampler.
 SMILESBatchColumnSampler
     Generate batches of SMILES subsequences "column-wise".
+SMILESBatchRandomSampler
+    Generate batches of SMILES subsequences randomly.
 SMILESConsecutiveSampler
     Generate samples of SMILES subsequences "consecutively".
+SMILESRandomSampler
+    Sample SMILES sequences randomly.
+StateInitializerMixin
+    A mixin class for specific state initialization techniques during
+    model training.
 """
 
 __all__ = (
     'BatchSampler',
     'SMILESBatchSampler',
     'SMILESBatchColumnSampler',
+    'SMILESBatchRandomSampler',
     'SMILESConsecutiveSampler',
+    'SMILESRandomSampler',
+    'StateInitializerMixin',
 )
 
 
 import abc
 import collections
 import dataclasses
+import functools
 import random
 import warnings
-from typing import (
-    Any, Callable, Generator, Iterator, List, Optional, Union, Tuple)
+from typing import Any, Callable, Generator, Iterator, List, Optional, Union, Tuple
 
 import mxnet as mx
-from mxnet import gluon
 
-from ..base import StateInitializerMixin
 from .vocabulary import SMILESVocabulary
 
 
@@ -115,7 +123,7 @@ class BatchSampler(metaclass=abc.ABCMeta):
         """
         if cls is BatchSampler:
             if (
-                issubclass(other_class, gluon.data.BatchSampler)
+                issubclass(other_class, mx.gluon.data.BatchSampler)
                 and issubclass(other_class, StateInitializerMixin)
             ):
                 return True
@@ -148,6 +156,120 @@ class BatchSampler(metaclass=abc.ABCMeta):
         """See moleculegen.StateInitializerMixin for the description of the method."""
 
 
+class StateInitializerMixin:
+    """A mixin class for specific state initialization techniques during
+    model training.
+
+    The main purpose is to provide additional API for batch samplers that
+    encourage nontrivial ways of state (re-)initialization during training.
+    For example, while sampling a mini-batch from SMILESBatchColumnSampler,
+    one should reinitialize states when finally all the samples from the
+    mini-batch encounter Token.EOS.
+    """
+
+    @classmethod
+    def init_states(
+            cls,
+            model: Any,
+            mini_batch: Any,
+            states: Optional[List[mx.np.ndarray]] = None,
+            detach: bool = True,
+            init_state_func: Optional[Callable[[Any], mx.nd.ndarray.NDArray]] = None,
+            *args,
+            **kwargs,
+    ) -> List[mx.np.ndarray]:
+        """(Re-)initialize the hidden state(s) of `model`.
+
+        Parameters
+        ----------
+        model : any
+            A Gluon model.
+        mini_batch : any
+            A (mini-)batch instance. Basically, tuples or dataclasses.
+        states : list of mxnet.nd.ndarray.NDArray, default None
+            The previous hidden states of `model`.
+            If None, then a new state list will be initialized.
+        detach : bool, default True
+            Whether to detach the sates from the computational graph.
+        init_state_func : callable, any -> mxnet.nd.ndarray.NDArray,
+                default None
+            A distribution function to initialize `states`.
+            If None, the previous states will be returned.
+            Recommended to use `StateInitializerMixin.init_state_func` method
+            to declare this callable.
+
+        Returns
+        -------
+        states : list of mxnet.np.ndarray
+            A state list.
+
+        Raises
+        ------
+        AttributeError
+            If `mini_batch` does not have `shape` attribute.
+            If `model` does not implement `begin_state` method.
+
+        Notes
+        -----
+        The context of the hidden states is the same as the `model`s context.
+        """
+        if not hasattr(mini_batch, 'shape'):
+            raise AttributeError(
+                '`mini_batch` must store `shape` attribute.'
+            )
+        if not hasattr(model, 'begin_state'):
+            raise AttributeError(
+                '`model` must implement `begin_state` method.'
+            )
+
+        if states is None:
+            states = model.begin_state(
+                batch_size=mini_batch.shape[0],
+                func=init_state_func,
+            )
+
+        if detach:
+            states = [state.detach() for state in states]
+
+        return states
+
+    @staticmethod
+    def init_state_func(
+            func: Callable[[Any], mx.nd.ndarray.NDArray] = mx.nd.zeros,
+            **func_kwargs,
+    ) -> Callable[[Any], mx.nd.ndarray.NDArray]:
+        """Return distribution callable `func` with arbitrary
+        (non-default) arguments `func_kwargs` specified in advance. Use
+        primarily for state initialization.
+
+        Parameters
+        ----------
+        func : callable, any -> mxnet.nd.ndarray.NDArray
+            One of the distribution functions from mxnet.nd.random or
+            functions like nd.zeros.
+        func_kwargs : dict, default None
+            Parameters of `func` excluding `shape`.
+
+        Returns
+        -------
+        func : callable
+            Partial function callable.
+
+        Raises
+        ------
+        ValueError
+            If `shape` parameter is included in `distribution_args`.
+            This parameter will be used separately in state initialization.
+        """
+        if 'shape' in func_kwargs or 'ctx' in func_kwargs:
+            raise ValueError(
+                '`shape` and `ctx` parameters should not be passed, since '
+                'they are processed internally by the model.'
+            )
+
+        return functools.partial(func, **func_kwargs)
+
+
 class SMILESBatchColumnSampler(StateInitializerMixin):
     """Generate batches of SMILES subsequences. Collect SMILES sequences of
     size `batch_size`, divide them into mini-batches of shape
@@ -173,16 +295,18 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
 
     Examples
     --------
+    >>> import tempfile
     >>> from moleculegen.data import SMILESDataset, SMILESVocabulary
-    >>> from moleculegen.tests.utils import TempSMILESFile
     >>> smiles_strings = (
     'CN=C=O\n'
     'CCc1c[n+]2ccc3c4ccccc4[nH]c3c2cc1\n'
     'OCCc1c(C)[n+](cs1)Cc2cnc(C)nc2N\n'
     'CC(=O)NCCC1=CNc2c1cc(OC)cc2'
     )
-    >>> with TempSMILESFile(smiles_strings=smiles_strings) as temp_fh:
-    ...     dataset = SMILESDataset(temp_fh.file_handler.name)
+    >>> with tempfile.NamedTemporaryFile(mode='w') as temp_fh:
+    ...     temp_fh.write(smiles_strings)
+    ...     temp_fh.seek(0)
+    ...     dataset = SMILESDataset(temp_fh.name)
     >>> vocabulary = SMILESVocabulary(dataset, need_corpus=True)
     >>> sampler = SMILESBatchColumnSampler(vocabulary.corpus, 2, 20, shuffle=False)
     >>> print('Input batch samples:')
@@ -199,10 +323,10 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
     cc4[nH]c3c2cc1}________
     Batch #3
     {OCCc1c(C)[n+](cs1)C
-    {CC(=O)NCCC1=CNc2c1cc(O
+    {CC(=O)NCCC1=CNc2c1c
     Batch #4
     c2cnc(C)nc2N}_______
-    C)cc2}______________
+    c(OC)cc2}___________
     >>> print('Output batch samples:')
     >>> for i, batch in enumerate(sampler, start=1):
     ...     print(f'Batch #{i}')
@@ -217,10 +341,10 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
     c4[nH]c3c2cc1}_________
     Batch #3
     OCCc1c(C)[n+](cs1)Cc
-    CC(=O)NCCC1=CNc2c1cc(OC
+    CC(=O)NCCC1=CNc2c1cc
     Batch #4
     2cnc(C)nc2N}________
-    )cc2}_______________
+    (OC)cc2}____________
     >>> print('Valid lengths')
     >>> for i, batch in enumerate(sampler, start=1):
     ...     print(f'Batch #{i}')
@@ -228,11 +352,11 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
     Batch #1
     [7 20]
     Batch #2
-    [0 11]
+    [0 14]
     Batch #3
     [20 20]
     Batch #4
-    [12 5]
+    [12 8]
 
     Notes
     -----
@@ -257,6 +381,8 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
 
         self.batch_size = batch_size
         self.n_steps = n_steps
+
+        self._n_samples: Optional[int] = None
 
     @property
     def corpus(self) -> List[List[int]]:
@@ -317,6 +443,9 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
     def __len__(self) -> int:
         """Return the number of batches.
         """
+        if self._n_samples is not None:
+            return self._n_samples
+
         warnings.warn(
             'The iterator of `SMILESBatchColumnSampler` is inherently slow,\n'
             'so is `__len__` method.'
@@ -325,6 +454,8 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
         n_samples = 0
         for n_samples, _ in enumerate(iter(self), start=1):
             pass
+        self._n_samples = n_samples
+
         return n_samples
 
     def __iter__(self) -> Generator[Batch, None, None]:
@@ -350,6 +481,8 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
             len(self._corpus) // self.batch_size
             * self.batch_size
         )
+
+        self._n_samples = 0
 
         for i_batch in range(0, n_batches, self.batch_size):
             curr_slice = slice(i_batch, i_batch + self.batch_size)
@@ -416,6 +549,8 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
             yield Batch(x, y, v_y, h)
 
             h = False
+
+            self._n_samples += 1
 
     def _pad(self, item_lists: List[List[int]]) -> mx.np.ndarray:
         """Get a batch of SMILES token lists and fill with the `PAD` token ids
@@ -516,23 +651,25 @@ class SMILESBatchColumnSampler(StateInitializerMixin):
         return states
 
 
-class SMILESBatchSampler(gluon.data.BatchSampler, StateInitializerMixin):
+class SMILESBatchSampler(mx.gluon.data.BatchSampler, StateInitializerMixin):
     """Generate (mini-)batches of SMILES (sub)sequences. Extends
     mxnet.gluon.data.BatchSampler API by implementing `init_states` for state
     initialization.
 
     Examples
     --------
+    >>> import tempfile
     >>> from moleculegen.data import SMILESDataset, SMILESVocabulary
-    >>> from moleculegen.tests.utils import TempSMILESFile
     >>> smiles_strings = (
     'CN=C=O\n'
     'CCc1c[n+]2ccc3c4ccccc4[nH]c3c2cc1\n'
     'OCCc1c(C)[n+](cs1)Cc2cnc(C)nc2N\n'
     'CC(=O)NCCC1=CNc2c1cc(OC)cc2'
     )
-    >>> with TempSMILESFile(smiles_strings=smiles_strings) as temp_fh:
-    ...     dataset = SMILESDataset(temp_fh.file_handler.name)
+    >>> with tempfile.NamedTemporaryFile(mode='w') as temp_fh:
+    ...     temp_fh.write(smiles_strings)
+    ...     temp_fh.seek(0)
+    ...     dataset = SMILESDataset(temp_fh.name)
     >>> vocabulary = SMILESVocabulary(dataset, need_corpus=True)
     >>> sampler = SMILESConsecutiveSampler(vocabulary.corpus, 20, shuffle=False)
     >>> batch_sampler = SMILESBatchSampler(sampler, 2)
@@ -557,14 +694,14 @@ class SMILESBatchSampler(gluon.data.BatchSampler, StateInitializerMixin):
     CCc1c[n+]2ccc3c4cccc
     cc4[nH]c3c2cc1}________
     c4[nH]c3c2cc1}_________
-    Valid lengths: [20 11].
+    Valid lengths: [20 14].
 
     Batch 3:
-    {CC(=O)NCCC1=CNc2c1cc(O
-    CC(=O)NCCC1=CNc2c1cc(OC
-    C)cc2}______________
-    )cc2}_______________
-    Valid lengths: [20  5].
+    {CC(=O)NCCC1=CNc2c1c
+    CC(=O)NCCC1=CNc2c1cc
+    c(OC)cc2}___________
+    (OC)cc2}____________
+    Valid lengths: [20  8].
 
     Batch 4:
     {CN=C=O}____________
@@ -574,6 +711,7 @@ class SMILESBatchSampler(gluon.data.BatchSampler, StateInitializerMixin):
     See also
     --------
     SMILESBatchColumnSampler
+    SMILESBatchRandomSampler
     """
 
     def __iter__(self) -> Generator[Batch, None, None]:
@@ -598,7 +736,7 @@ class SMILESBatchSampler(gluon.data.BatchSampler, StateInitializerMixin):
             )
 
 
-class SMILESConsecutiveSampler(gluon.data.Sampler):
+class SMILESConsecutiveSampler(mx.gluon.data.Sampler):
     """Consecutively generate SMILES (sub)sequences of length `n_steps`,
     padding the lacking tokens if necessary. By default, the generated objects
     are of type Sample, which has attributes `inputs` (input sequences),
@@ -630,11 +768,13 @@ class SMILESConsecutiveSampler(gluon.data.Sampler):
 
     Examples
     --------
+    >>> import tempfile
     >>> from moleculegen.data import SMILESDataset, SMILESVocabulary
-    >>> from moleculegen.tests.utils import TempSMILESFile
     >>> smiles_string = 'CCc1c[n+]2ccc3c4ccccc4[nH]c3c2cc1'
-    >>> with TempSMILESFile(smiles_strings=smiles_string) as temp_fh:
-    ...     dataset = SMILESDataset(temp_fh.file_handler.name)
+    >>> with tempfile.NamedTemporaryFile(mode='w') as temp_fh:
+    ...     temp_fh.write(smiles_string)
+    ...     temp_fh.seek(0)
+    ...     dataset = SMILESDataset(temp_fh.name)
     >>> vocabulary = SMILESVocabulary(dataset, need_corpus=True)
     >>> sampler = SMILESConsecutiveSampler(vocabulary.corpus, n_steps=20)
     >>> len(sampler)
@@ -648,7 +788,7 @@ class SMILESConsecutiveSampler(gluon.data.Sampler):
     20
     cc4[nH]c3c2cc1}________
     c4[nH]c3c2cc1}_________
-    11
+    14
     """
 
     @dataclasses.dataclass(eq=False, frozen=True)
@@ -680,12 +820,19 @@ class SMILESConsecutiveSampler(gluon.data.Sampler):
                 f"`sample_type` must be either 'sample' or 'tuple'."
             )
 
+        self._n_samples: Optional[int] = None
+
     def __len__(self) -> int:
         """Return the number of samples.
         """
+        if self._n_samples is not None:
+            return self._n_samples
+
         n_samples = 0
         for n_samples, _ in enumerate(iter(self), start=1):
             pass
+        self._n_samples = n_samples
+
         return n_samples
 
     def __iter__(self) -> Generator[
@@ -701,6 +848,8 @@ class SMILESConsecutiveSampler(gluon.data.Sampler):
         """
         if self._shuffle:
             random.shuffle(self._corpus)
+
+        self._n_samples = 0
 
         # Iterate over the corpus of SMILES token indices.
         for tokens in self._corpus:
@@ -719,6 +868,8 @@ class SMILESConsecutiveSampler(gluon.data.Sampler):
                 step_i += self._n_steps
                 step_len += self._n_steps
 
+                self._n_samples += 1
+
             # If the last subsequence is of length < `self._n_steps`,
             remainder_len = step_len - len(tokens) + 1
             if remainder_len > 0 and remainder_len != self._n_steps:
@@ -731,9 +882,145 @@ class SMILESConsecutiveSampler(gluon.data.Sampler):
                     self._n_steps - remainder_len,
                 )
 
+                self._n_samples += 1
+
     def __call__(self) -> Iterator[Union[Sample, Tuple[List[int], List[int]]]]:
         """Return a sampler iterator.
         No need to use this syntactic sugar explicitly w/ mxnet API. Created
         only for tensorflow's Dataset or similar APIs.
         """
         return iter(self)
+
+
+class SMILESBatchRandomSampler(SMILESBatchSampler):
+    """Same as `SMILESBatchSampler` but `init_states` always returns newly initialized
+    states and they are not detached from a computational graph.
+    Passing a `SMILESRandomSampler` instance creates a batch sampler that yields
+    mini-batches of random subsequences w/ possible repetitions.
+
+    See also
+    --------
+    SMILESBatchSampler
+    SMILESRandomSampler
+    """
+
+    @classmethod
+    def init_states(
+            cls,
+            model: Any,
+            mini_batch: Any,
+            init_state_func: Optional[Callable[[Any], mx.nd.ndarray.NDArray]] = None,
+            *args,
+            **kwargs,
+    ) -> List[mx.np.ndarray]:
+        return super().init_states(
+            model=model,
+            mini_batch=mini_batch,
+            init_state_func=init_state_func,
+            states=None,
+            detach=False,
+        )
+
+
+class SMILESRandomSampler(mx.gluon.data.Sampler):
+    """Load SMILES (sub)sequences from `SMILESConsecutiveSampler` and sample
+    `n_samples` sequences w/ replacement.
+
+    Parameters
+    ----------
+    corpus : list of list of int
+        The original data corpus loaded from a vocabulary.
+    n_steps : int, default None
+        The length of a substring.
+        If None, it equals to the maximum string length in the corpus minus 1.
+    n_samples : int, default None
+        The number of samples to yield.
+        If None, it equals to the number of loaded sequences from
+        `SMILESConsecutiveSampler`.
+
+    Examples
+    --------
+    >>> import tempfile
+    >>> from moleculegen.data import SMILESDataset, SMILESVocabulary
+    >>> smiles_strings = (
+    'CN=C=O\n'
+    'CCc1c[n+]2ccc3c4ccccc4[nH]c3c2cc1\n'
+    'OCCc1c(C)[n+](cs1)Cc2cnc(C)nc2N\n'
+    'CC(=O)NCCC1=CNc2c1cc(OC)cc2'
+    )
+    >>> with tempfile.NamedTemporaryFile(mode='w') as temp_fh:
+    ...     temp_fh.write(smiles_strings)
+    ...     temp_fh.seek(0)
+    ...     dataset = SMILESDataset(temp_fh.name)
+    >>> vocabulary = SMILESVocabulary(dataset, need_corpus=True)
+    >>> sampler = SMILESRandomSampler(vocabulary.corpus, n_steps=20, n_samples=10)
+    >>> len(sampler)
+    2
+    >>> for sample in sampler:
+    ...     print(''.join(vocabulary.get_tokens(sample.inputs)))
+    ...     print(''.join(vocabulary.get_tokens(sample.outputs)))
+    ...     print(sample.valid_length)
+    {OCCc1c(C)[n+](cs1)C
+    OCCc1c(C)[n+](cs1)Cc
+    20
+    {CN=C=O}____________
+    CN=C=O}_____________
+    7
+    c(OC)cc2}___________
+    (OC)cc2}____________
+    8
+    cc4[nH]c3c2cc1}_____
+    c4[nH]c3c2cc1}______
+    14
+    c2cnc(C)nc2N}_______
+    2cnc(C)nc2N}________
+    12
+    c(OC)cc2}___________
+    (OC)cc2}____________
+    8
+    {OCCc1c(C)[n+](cs1)C
+    OCCc1c(C)[n+](cs1)Cc
+    20
+    cc4[nH]c3c2cc1}_____
+    c4[nH]c3c2cc1}______
+    14
+    {OCCc1c(C)[n+](cs1)C
+    OCCc1c(C)[n+](cs1)Cc
+    20
+    cc4[nH]c3c2cc1}_____
+    c4[nH]c3c2cc1}______
+    14
+
+    See also
+    --------
+    SMILESConsecutiveSampler
+    """
+
+    def __init__(
+            self,
+            corpus: List[List[int]],
+            n_steps: Optional[int] = None,
+            n_samples: Optional[int] = None,
+    ):
+        self._corpus = corpus
+        self._n_steps = n_steps or max(map(len, self._corpus))
+
+        self.__data = tuple(iter(
+            SMILESConsecutiveSampler(self._corpus, self._n_steps, shuffle=False)))
+        self._n_samples = n_samples or len(self.__data)
+
+    def __len__(self) -> int:
+        """Return the number of samples.
+        """
+        return self._n_samples
+
+    def __iter__(self) -> Generator[SMILESConsecutiveSampler.Sample, None, None]:
+        """Generate samples of type `SMILESConsecutiveSampler.Sample`
+        comprising input sequences, output sequences, and valid lengths.
+
+        Yields
+        ------
+        sample : SMILESConsecutiveSampler.Sample
+            Input-output sequences.
+        """
+        return (random.choice(self.__data) for _ in range(self._n_samples))

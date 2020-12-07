@@ -3,24 +3,18 @@ Base objects for all modules.
 
 Classes
 -------
-StateInitializerMixin
-    A mixin class for specific state initialization techniques during
-    model training.
 Token
     A token enumeration, which stores a diverse set of atomic, bond, and
     composite tokens.
 """
 
 __all__ = (
-    'StateInitializerMixin',
     'Token',
 )
 
 
-import functools
 import re
-from typing import Any, Callable, FrozenSet, List, Optional
-from mxnet import nd, np
+from typing import FrozenSet, List
 
 
 class Token:
@@ -142,7 +136,7 @@ class Token:
     def tokenize(
             cls,
             smiles: str,
-            find_brackets: bool = False,
+            match_bracket_atoms: bool = False,
     ) -> List[str]:
         """Tokenize `smiles` string.
 
@@ -150,7 +144,7 @@ class Token:
         ----------
         smiles : str
             SMILES string.
-        find_brackets : bool, default False
+        match_bracket_atoms : bool, default False
             Whether to treat the subcompounds enclosed in [] as separate tokens.
 
         Returns
@@ -158,17 +152,8 @@ class Token:
         tokens : list of str
             An empty list, if at least one character not from `cls`.
             A list of tokens from `cls`, otherwise.
-
-        TODO:
-        Notes
-        -----
-        It is probably not applicable to all cases of data.
-        However, it is lot better than simply treating every character as a
-        token when in fact two or more characters (e.g. [nH] and Cl) are all
-        single entities. To comprehend how to tokenize universally and
-        effectively, some research on the domain topic is required.
         """
-        if find_brackets:
+        if match_bracket_atoms:
             token_list: List[str] = []
 
             for subcompound in cls._BRACKETS_RE.split(smiles):
@@ -234,117 +219,3 @@ class Token:
                     return []
 
         return token_list
-
-
-class StateInitializerMixin:
-    """A mixin class for specific state initialization techniques during
-    model training.
-
-    The main purpose is to provide additional API for batch samplers that
-    encourage nontrivial ways of state (re-)initialization during training.
-    For example, while sampling a mini-batch from SMILESBatchColumnSampler,
-    one should reinitialize states when finally all the samples from the
-    mini-batch encounter Token.EOS.
-    """
-
-    @classmethod
-    def init_states(
-            cls,
-            model: Any,
-            mini_batch: Any,
-            states: Optional[List[np.ndarray]] = None,
-            detach: bool = True,
-            init_state_func: Optional[Callable[[Any], nd.ndarray.NDArray]] = None,
-            *args,
-            **kwargs,
-    ) -> List[np.ndarray]:
-        """(Re-)initialize the hidden state(s) of `model`.
-
-        Parameters
-        ----------
-        model : any
-            A Gluon model.
-        mini_batch : any
-            A (mini-)batch instance. Basically, tuples or dataclasses.
-        states : list of mxnet.nd.ndarray.NDArray, default None
-            The previous hidden states of `model`.
-            If None, then a new state list will be initialized.
-        detach : bool, default True
-            Whether to detach the sates from the computational graph.
-        init_state_func : callable, any -> mxnet.nd.ndarray.NDArray,
-                default None
-            A distribution function to initialize `states`.
-            If None, the previous states will be returned.
-            Recommended to use `StateInitializerMixin.init_state_func` method
-            to declare this callable.
-
-        Returns
-        -------
-        states : list of mxnet.np.ndarray
-            A state list.
-
-        Raises
-        ------
-        AttributeError
-            If `mini_batch` does not have `shape` attribute.
-            If `model` does not implement `begin_state` method.
-
-        Notes
-        -----
-        The context of the hidden states is the same as the `model`s context.
-        """
-        if not hasattr(mini_batch, 'shape'):
-            raise AttributeError(
-                '`mini_batch` must store `shape` attribute.'
-            )
-        if not hasattr(model, 'begin_state'):
-            raise AttributeError(
-                '`model` must implement `begin_state` method.'
-            )
-
-        if states is None:
-            states = model.begin_state(
-                batch_size=mini_batch.shape[0],
-                func=init_state_func,
-            )
-
-        if detach:
-            states = [state.detach() for state in states]
-
-        return states
-
-    @staticmethod
-    def init_state_func(
-            func: Callable[[Any], nd.ndarray.NDArray] = nd.zeros,
-            **func_kwargs,
-    ) -> Callable[[Any], nd.ndarray.NDArray]:
-        """Return distribution callable `func` with arbitrary
-        (non-default) arguments `func_kwargs` specified in advance. Use
-        primarily for state initialization.
-
-        Parameters
-        ----------
-        func : callable, any -> mxnet.nd.ndarray.NDArray
-            One of the distribution functions from mxnet.nd.random or
-            functions like nd.zeros.
-        func_kwargs : dict, default None
-            Parameters of `func` excluding `shape`.
-
-        Returns
-        -------
-        func : callable
-            Partial function callable.
-
-        Raises
-        ------
-        ValueError
-            If `shape` parameter is included in `distribution_args`.
-            This parameter will be used separately in state initialization.
-        """
-        if 'shape' in func_kwargs or 'ctx' in func_kwargs:
-            raise ValueError(
-                '`shape` and `ctx` parameters should not be passed, since '
-                'they are processed internally by the model.'
-            )
-
-        return functools.partial(func, **func_kwargs)
