@@ -58,6 +58,9 @@ class SMILESVocabulary:
         ??? Note that while ignoring tokens and corresponding SMILES strings, we keep the
         statistics of the whole data in `dataset`. We do not recalculate the numbers even
         when encountering redundant tokens.
+    match_bracket_atoms : bool, default False
+        During tokenization, whether to treat the subcompounds enclosed in []
+        as separate tokens.
 
     load_from_pickle : str, default None
         If passed, load all the attributes from the file named `load_from_pickle`.
@@ -95,6 +98,7 @@ class SMILESVocabulary:
             tokens: Optional[List[List[str]]] = None,
             need_corpus: bool = False,
             min_count: int = 1,
+            match_bracket_atoms: bool = False,
             load_from_pickle: Optional[str] = None,
     ):
         self._corpus: Optional[List[List[int]]] = None
@@ -117,7 +121,7 @@ class SMILESVocabulary:
 
             tokens: List[List[str]] = (
                 tokens
-                or [Token.tokenize(sample) for sample in dataset]
+                or [Token.tokenize(sample, match_bracket_atoms) for sample in dataset]
             )
             counter: Counter[str] = count_tokens(tokens)
             redundant_tokens: FrozenSet[str] = frozenset(

@@ -83,9 +83,9 @@ class TokenTestCase(unittest.TestCase):
 
     def test_tokenize(self):
 
-        def test(smiles, find_brackets=False):
+        def test(smiles, match_bracket_atoms=False):
             self.assertListEqual(
-                Token.tokenize(''.join(smiles), find_brackets=find_brackets),
+                Token.tokenize(''.join(smiles), match_bracket_atoms),
                 smiles
             )
 
