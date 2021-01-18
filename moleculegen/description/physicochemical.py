@@ -34,7 +34,7 @@ from .base import get_descriptors
 
 
 PHYSCHEM_DESCRIPTOR_MAP: Dict[str, Callable[[Mol], Real]] = {
-    '#BertzCT': BertzCT,
+    'BertzCT': BertzCT,
     '#RotatableBonds': CalcNumRotatableBonds,
     'TotalPolarSurfaceArea': CalcTPSA,
     'MolecularWeight': ExactMolWt,

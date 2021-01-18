@@ -22,6 +22,7 @@ Validity
 
 __all__ = (
     'CompositeMetric',
+    'KLDivergence',
     'Metric',
     'Novelty',
     'Perplexity',
@@ -37,7 +38,12 @@ from numbers import Real
 from typing import Any, Iterator, List, Optional, Sequence, Tuple
 
 import mxnet as mx
+import numpy as np
+import scipy.stats as stats
 from rdkit.Chem import MolFromSmiles
+
+from ..description.base import get_descriptors_df
+from ..description.physicochemical import PHYSCHEM_DESCRIPTOR_MAP
 
 
 class Metric(metaclass=abc.ABCMeta):
@@ -61,6 +67,14 @@ class Metric(metaclass=abc.ABCMeta):
 
         self._result: Real = 0.0  # The accumulated result.
         self._n_samples: int = 0  # The number of samples evaluated.
+
+    @property
+    def name(self) -> str:
+        return self.__name
+
+    @property
+    def empty_value(self) -> Any:
+        return self.__empty_value
 
     def __repr__(self) -> str:
         return f'<{self.__class__.__name__}(name={self.__name!r}) at {hex(id(self))}>'
@@ -494,6 +508,67 @@ class RAC(Metric):
                     result += 1
 
         return result, n_samples
+
+
+class KLDivergence(Metric):
+    r"""Calculate the Kullback-Leibler divergence of physicochemical descriptors.
+
+    References
+    ----------
+    .. [1] Brown et al. Guacamol: Benchmarking Models for de Novo Molecular Design.
+       J. Chem. Inf. Model. 2019, 59, 1096−1108
+    """
+
+    def _calculate(
+            self,
+            *,
+            predictions: Sequence[str],
+            labels: Sequence[str],
+            **kwargs,
+    ) -> Tuple[Real, int]:
+        descriptors_valid = get_descriptors_df(predictions, PHYSCHEM_DESCRIPTOR_MAP)
+        if descriptors_valid.shape[0] < 2:
+            return self.empty_value, 1
+
+        descriptors_train = get_descriptors_df(labels, PHYSCHEM_DESCRIPTOR_MAP)
+
+        discrete_cols = set(
+            c for c in PHYSCHEM_DESCRIPTOR_MAP.keys()
+            if c.startswith('#')
+        )
+        continuous_cols = PHYSCHEM_DESCRIPTOR_MAP.keys() - discrete_cols
+
+        kl_divs = []
+
+        for column in discrete_cols:
+            discrete_data_valid = descriptors_valid[column].values
+            discrete_data_train = descriptors_train[column].values
+
+            hist_valid, bins = np.histogram(discrete_data_valid, density=True)
+            hist_train, _ = np.histogram(discrete_data_train, bins=bins, density=True)
+
+            discrete_div = stats.entropy(hist_train + 1e-10, hist_valid + 1e-10)
+            kl_divs.append(discrete_div)
+
+        for column in continuous_cols:
+            continuous_data_valid = descriptors_valid[column].values
+            continuous_data_train = descriptors_train[column].values
+
+            kde_desc_valid = stats.gaussian_kde(continuous_data_valid)
+            kde_desc_train = stats.gaussian_kde(continuous_data_train)
+
+            interval = np.linspace(
+                start=min(continuous_data_valid.min(), continuous_data_train.min()),
+                stop=max(continuous_data_valid.max(), continuous_data_train.max()),
+                num=1000,
+            )
+            continuous_div = stats.entropy(
+                kde_desc_train.evaluate(interval) + 1e-10,
+                kde_desc_valid.evaluate(interval) + 1e-10,
+            )
+            kl_divs.append(continuous_div)
+
+        return np.mean([np.exp(-kl_div) for kl_div in kl_divs]), 1
 
 
 class Perplexity(mx.metric.Perplexity):

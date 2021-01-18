@@ -101,18 +101,18 @@ def get_descriptors_df(
     ------
     TypeError
         If any compound is invalid.
+
+    # ??? Should we include SMILES strings?
     """
     molecules: List[Mol] = check_compounds_valid(
         compounds, raise_exception=raise_exception, **converter_kwargs)
 
     if not isinstance(compounds, pd.DataFrame):
-        compounds = pd.DataFrame({'smiles': compounds})
+        compounds = pd.DataFrame()
 
     for name, function in function_map.items():
         results = array.array('f', map(function, molecules))
         compounds = compounds.assign(**{name: results})
-
-    compounds.set_index(keys='smiles', drop=True, inplace=True)
 
     return compounds
 

@@ -9,6 +9,7 @@ from rdkit.RDLogger import DisableLog
 
 from moleculegen.evaluation import (
     get_mask_for_loss,
+    KLDivergence,
     MaskedSoftmaxCELoss,
     Novelty,
     Perplexity,
@@ -203,6 +204,18 @@ class RUACTestCase(unittest.TestCase):
         self.ruac.reset()
 
         self.assertEqual(result, 2/5)
+
+
+class KLDivergenceTestCase(unittest.TestCase):
+    def setUp(self):
+        self.metric = KLDivergence()
+
+    def test_1_same_inputs(self):
+        train = ('CCO', 'N#N')
+        valid = train
+        self.metric.update(predictions=valid, labels=train)
+
+        self.assertEqual(self.metric.get()[1], 1.0)
 
 
 class PerplexityTestCase(unittest.TestCase):

@@ -44,7 +44,7 @@ from rdkit.Chem import MolFromSmiles
 from .base import Callback
 from ..description.base import get_descriptors_df
 from ..description.physicochemical import PHYSCHEM_DESCRIPTOR_MAP
-from ..evaluation.metric import CompositeMetric, Metric
+from ..evaluation.metric import CompositeMetric, KLDivergence, Metric
 from ..generation.search import BaseSearch
 
 
@@ -108,6 +108,8 @@ class EpochMetricScorer(Callback):
         The number of SMILES strings to generate.
     train_dataset : sequence of str, default None
         A dataset to compare the generated compounds with.
+
+    # TODO Multiprocessing for both CPU and GPU.
     """
 
     def __init__(
@@ -139,9 +141,25 @@ class EpochMetricScorer(Callback):
         Expected named arguments:
             - model
         """
-        for _ in range(self.__n_predictions):
-            smiles = self.__predictor()
-            self.__metrics.update(predictions=[smiles], labels=self.__train_dataset)
+        # `KLDivergence` does not support evaluating one single prediction;
+        # if it's present in metrics, we will first generate `self.__n_predictions`
+        # strings and evaluate, otherwise, we generate and evaluate one string at a
+        # time to save space.
+        # ??? Maybe create a separate `Metric` abstract base subclass for the metrics
+        #     that cannot be accumulated?
+        has_kl_divergence = False
+        for metric in self.__metrics:
+            if isinstance(metric, KLDivergence):
+                has_kl_divergence = True
+                break
+
+        if has_kl_divergence:
+            predictions = tuple(self.__predictor() for _ in range(self.__n_predictions))
+            self.__metrics.update(predictions=predictions, labels=self.__train_dataset)
+        else:
+            for _ in range(self.__n_predictions):
+                smiles = self.__predictor()
+                self.__metrics.update(predictions=[smiles], labels=self.__train_dataset)
 
         results = ', '.join(
             f'{name}: {value:.3f}'
@@ -592,6 +610,7 @@ class PhysChemDescriptorPlotter(Callback):
         self._image_file_prefix = image_file_prefix
         self._epoch = epoch
 
+        # ??? If enable `on_train_begin` method, run the code below inside this method.
         self._train_data_t = get_descriptors_df(train_data, PHYSCHEM_DESCRIPTOR_MAP)
         self._train_data_t = self._transformer.fit_transform(self._train_data_t)
 

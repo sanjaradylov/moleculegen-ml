@@ -31,6 +31,7 @@ get_mask_for_loss
 __all__ = (
     'get_mask_for_loss',
     'CompositeMetric',
+    'KLDivergence',
     'MaskedSoftmaxCELoss',
     'Metric',
     'Novelty',
@@ -47,6 +48,7 @@ from .loss import (
 )
 from .metric import (
     CompositeMetric,
+    KLDivergence,
     Metric,
     Novelty,
     Perplexity,
