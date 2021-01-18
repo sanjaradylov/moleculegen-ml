@@ -68,6 +68,14 @@ class Metric(metaclass=abc.ABCMeta):
         self._result: Real = 0.0  # The accumulated result.
         self._n_samples: int = 0  # The number of samples evaluated.
 
+    @property
+    def name(self) -> str:
+        return self.__name
+
+    @property
+    def empty_value(self) -> Any:
+        return self.__empty_value
+
     def __repr__(self) -> str:
         return f'<{self.__class__.__name__}(name={self.__name!r}) at {hex(id(self))}>'
 
@@ -519,6 +527,9 @@ class KLDivergence(Metric):
             **kwargs,
     ) -> Tuple[Real, int]:
         descriptors_valid = get_descriptors_df(predictions, PHYSCHEM_DESCRIPTOR_MAP)
+        if descriptors_valid.shape[0] < 2:
+            return self.empty_value, 1
+
         descriptors_train = get_descriptors_df(labels, PHYSCHEM_DESCRIPTOR_MAP)
 
         discrete_cols = set(

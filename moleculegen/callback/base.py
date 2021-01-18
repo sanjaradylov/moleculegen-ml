@@ -27,6 +27,8 @@ from typing import Any, Callable, List, Optional, TextIO
 
 class Callback(metaclass=abc.ABCMeta):
     """An ABC to build new callbacks.
+
+    # ??? Do we need `on_train_begin` and `on_train_end` methods?
     """
 
     def on_batch_begin(self, **fit_kwargs):
