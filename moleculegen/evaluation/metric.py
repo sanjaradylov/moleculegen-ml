@@ -41,8 +41,11 @@ import mxnet as mx
 import numpy as np
 import scipy.stats as stats
 from rdkit.Chem import MolFromSmiles
+from sklearn.pipeline import make_pipeline
 
 from ..description.base import get_descriptors_df
+from ..description.common import MoleculeTransformer
+from ..description.fingerprints import InternalTanimoto
 from ..description.physicochemical import PHYSCHEM_DESCRIPTOR_MAP
 
 
@@ -519,6 +522,29 @@ class KLDivergence(Metric):
        J. Chem. Inf. Model. 2019, 59, 1096−1108
     """
 
+    @staticmethod
+    def calculate_for_continuous(data_train: np.array, data_valid: np.array) -> Real:
+        kde_desc_train = stats.gaussian_kde(data_train)
+        kde_desc_valid = stats.gaussian_kde(data_valid)
+
+        interval = np.linspace(
+            start=min(data_train.min(), data_valid.min()),
+            stop=max(data_train.max(), data_valid.max()),
+            num=1000,
+        )
+
+        return stats.entropy(
+            kde_desc_train.evaluate(interval) + 1e-10,
+            kde_desc_valid.evaluate(interval) + 1e-10,
+        )
+
+    @staticmethod
+    def calculate_for_discrete(data_train: np.array, data_valid: np.array) -> Real:
+        hist_train, bins = np.histogram(data_train, density=True)
+        hist_valid, _ = np.histogram(data_valid, bins=bins, density=True)
+
+        return stats.entropy(hist_train + 1e-10, hist_valid + 1e-10)
+
     def _calculate(
             self,
             *,
@@ -541,32 +567,34 @@ class KLDivergence(Metric):
         kl_divs = []
 
         for column in discrete_cols:
-            discrete_data_valid = descriptors_valid[column].values
             discrete_data_train = descriptors_train[column].values
+            discrete_data_valid = descriptors_valid[column].values
 
-            hist_valid, bins = np.histogram(discrete_data_valid, density=True)
-            hist_train, _ = np.histogram(discrete_data_train, bins=bins, density=True)
-
-            discrete_div = stats.entropy(hist_train + 1e-10, hist_valid + 1e-10)
-            kl_divs.append(discrete_div)
+            try:
+                kl_div = self.calculate_for_discrete(
+                    discrete_data_train, discrete_data_valid)
+                kl_divs.append(kl_div)
+            except np.linalg.LinAlgError:
+                return self.empty_value, 1
 
         for column in continuous_cols:
-            continuous_data_valid = descriptors_valid[column].values
             continuous_data_train = descriptors_train[column].values
+            continuous_data_valid = descriptors_valid[column].values
 
-            kde_desc_valid = stats.gaussian_kde(continuous_data_valid)
-            kde_desc_train = stats.gaussian_kde(continuous_data_train)
+            kl_div = self.calculate_for_continuous(
+                continuous_data_train, continuous_data_valid)
+            kl_divs.append(kl_div)
 
-            interval = np.linspace(
-                start=min(continuous_data_valid.min(), continuous_data_train.min()),
-                stop=max(continuous_data_valid.max(), continuous_data_train.max()),
-                num=1000,
-            )
-            continuous_div = stats.entropy(
-                kde_desc_train.evaluate(interval) + 1e-10,
-                kde_desc_valid.evaluate(interval) + 1e-10,
-            )
-            kl_divs.append(continuous_div)
+        it_pipe = make_pipeline(MoleculeTransformer(), InternalTanimoto())
+        sim_train = it_pipe.fit_transform(labels)
+        sim_valid = it_pipe.fit_transform(predictions)
+        np.fill_diagonal(sim_train, 0.)
+        np.fill_diagonal(sim_valid, 0.)
+        sim_train = sim_train.max(axis=1)
+        sim_valid = sim_valid.max(axis=1)
+
+        kl_div = self.calculate_for_continuous(sim_train, sim_valid)
+        kl_divs.append(kl_div)
 
         return np.mean([np.exp(-kl_div) for kl_div in kl_divs]), 1
 

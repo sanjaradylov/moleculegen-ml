@@ -4,12 +4,13 @@ Test sklearn-compatible transformers.
 
 import unittest
 
-from numpy import ndarray
+import numpy as np
 from scipy.sparse import csr_matrix
 from sklearn.pipeline import make_pipeline
 
 from moleculegen.description import (
     check_compounds_valid,
+    InternalTanimoto,
     MoleculeTransformer,
     MorganFingerprint,
     RDKitDescriptorTransformer,
@@ -40,13 +41,13 @@ class MorganFingerprintTestCase(unittest.TestCase):
         mp.fit(self.molecules)
 
     def test_2_transform(self):
-        mp = MorganFingerprint(return_sparse=True)
+        mp = MorganFingerprint(return_type='csr_sparse')
         ecfp = mp.fit_transform(self.molecules)
         self.assertIsInstance(ecfp, csr_matrix)
 
-        mp.return_sparse = False
+        mp.return_type = 'ndarray'
         ecfp = mp.transform(self.molecules)
-        self.assertIsInstance(ecfp, ndarray)
+        self.assertIsInstance(ecfp, np.ndarray)
 
 
 class MoleculeTransformerTestCase(unittest.TestCase):
@@ -73,6 +74,17 @@ class RDKitDescriptorTransformerTestCase(unittest.TestCase):
             descriptors.shape,
             (len(self.compounds), len(self.pipe[1].descriptor_names_)),
         )
+
+
+class InternalTanimotoTestCase(unittest.TestCase):
+    def test_1_sim_matrix(self):
+        molecules = ['N#N', 'CN=C=O', 'C#N', 'C#C']
+        mt = MoleculeTransformer()
+        it = InternalTanimoto(radius=2, n_bits=4096)
+        pipe = make_pipeline(mt, it)
+        sim_matrix = pipe.fit_transform(molecules)
+
+        self.assertTrue(np.allclose(sim_matrix, sim_matrix.T))
 
 
 if __name__ == '__main__':

@@ -11,6 +11,8 @@ Classes
 OneHotEncoder
     One-hot encoder functor.
 
+InternalTanimoto
+    Build internal Tanimoto similarity matrix.
 MorganFingerprint
     Apply the Morgan algorithm to a set of compounds to get circular fingerprints.
 MoleculeTransformer
@@ -38,6 +40,7 @@ __all__ = (
     'get_descriptors',
     'get_descriptors_df',
     'get_physchem_descriptors',
+    'InternalTanimoto',
     'MoleculeTransformer',
     'MorganFingerprint',
     'OneHotEncoder',
@@ -57,6 +60,7 @@ from .common import (
     RDKitDescriptorTransformer,
 )
 from .fingerprints import (
+    InternalTanimoto,
     MorganFingerprint,
 )
 from .physicochemical import (
