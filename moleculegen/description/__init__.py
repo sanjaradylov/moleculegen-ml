@@ -41,6 +41,7 @@ __all__ = (
     'get_descriptors_df',
     'get_physchem_descriptors',
     'InternalTanimoto',
+    'InvalidSMILESError',
     'MoleculeTransformer',
     'MorganFingerprint',
     'OneHotEncoder',
@@ -53,6 +54,7 @@ from .base import (
     check_compounds_valid,
     get_descriptors,
     get_descriptors_df,
+    InvalidSMILESError,
 )
 from .common import (
     MoleculeTransformer,

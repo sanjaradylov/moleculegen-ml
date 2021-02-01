@@ -20,7 +20,7 @@ __all__ = (
 
 import array
 from numbers import Real
-from typing import Callable, Dict, MutableSequence
+from typing import Callable, Dict, Iterable
 
 from rdkit.Chem import Mol
 from rdkit.Chem.rdMolDescriptors import (
@@ -46,18 +46,17 @@ PHYSCHEM_DESCRIPTOR_MAP: Dict[str, Callable[[Mol], Real]] = {
 }
 
 
-def get_physchem_descriptors(compounds: MutableSequence[str]) \
-        -> Dict[str, array.array]:
+def get_physchem_descriptors(compounds: Iterable[str]) -> Dict[str, array.array]:
     """Return physicochemical descriptors.
 
     Parameters
     ----------
-    compounds : mutable sequence of str
-        (Mutable) Sequence of SMILES strings.
+    compounds : iterable of str
+        SMILES strings.
 
     Returns
     -------
-    result : dict
+    dict, str -> array.array of float
         A dictionary of descriptors, where keys are descriptor names and
         values are the calculated descriptors.
     """

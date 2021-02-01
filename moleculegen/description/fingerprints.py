@@ -157,10 +157,11 @@ class InternalTanimoto(BaseEstimator):
         # noinspection PyAttributeOutsideInit
         self.ecfp_ = ecfp
         # noinspection PyAttributeOutsideInit
-        self.n_features_in_ = len(fingerprints)
+        self.n_features_in_ = 1
 
-        sim_matrix = np.ones((self.n_features_in_, self.n_features_in_))
-        for i in range(1, self.n_features_in_):
+        n_fingerprints = len(fingerprints)
+        sim_matrix = np.ones((n_fingerprints, n_fingerprints))
+        for i in range(1, n_fingerprints):
             sim_index = BulkTanimotoSimilarity(fingerprints[i], fingerprints[:i])
             sim_matrix[i, :i] = sim_index
             sim_matrix[:i, i] = sim_index

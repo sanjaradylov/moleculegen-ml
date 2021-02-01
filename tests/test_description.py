@@ -11,6 +11,7 @@ from sklearn.pipeline import make_pipeline
 from moleculegen.description import (
     check_compounds_valid,
     InternalTanimoto,
+    InvalidSMILESError,
     MoleculeTransformer,
     MorganFingerprint,
     RDKitDescriptorTransformer,
@@ -21,7 +22,7 @@ from .utils import SMILES_STRINGS
 class MorganFingerprintTestCase(unittest.TestCase):
     def setUp(self):
         smiles_strings = SMILES_STRINGS.split('\n')
-        self.molecules = check_compounds_valid(smiles_strings, raise_exception=True)
+        self.molecules = check_compounds_valid(smiles_strings, invalid='raise')
 
     def test_1_invalid_parameters(self):
         mp = MorganFingerprint(radius=0, n_bits=0)
@@ -52,13 +53,13 @@ class MorganFingerprintTestCase(unittest.TestCase):
 
 class MoleculeTransformerTestCase(unittest.TestCase):
     def setUp(self):
-        self.transformer = MoleculeTransformer()
+        self.transformer = MoleculeTransformer(invalid='raise')
 
     def test_1_invalid(self):
         compounds = SMILES_STRINGS.split('\n')
         compounds.extend(['invalid', '#C%'])
 
-        with self.assertRaises(TypeError):
+        with self.assertRaises(InvalidSMILESError):
             self.transformer.fit_transform(compounds)
 
 

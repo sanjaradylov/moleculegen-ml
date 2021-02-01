@@ -12,13 +12,14 @@ RDKitDescriptorTransformer
 """
 
 __all__ = (
+    'get_descriptor_df_from_mol',
     'OneHotEncoder',
     'MoleculeTransformer',
     'RDKitDescriptorTransformer',
 )
 
 
-from typing import Iterable, List
+from typing import Collection, Iterable, List
 
 import mxnet as mx
 from rdkit.Chem import Descriptors, Mol
@@ -63,28 +64,39 @@ class MoleculeTransformer(BaseEstimator, TransformerMixin):
 
     Parameters
     ----------
+    invalid : {'nan', 'raise', 'skip'}, default='skip'
+        Whether to a) replace invalid SMILES with `numpy.NaN`s, b) raise
+        `InvalidSMILESError`, or c) ignore them.
     converter_kwargs : dict, default {}
         Optional key-word arguments for `rdkit.Chem.MolFromSmiles`.
+
+    Examples
+    --------
+    >>> from rdkit.Chem import Mol
+    >>> mt = MoleculeTransformer(invalid='skip')
+    >>> smiles = ('CCO', 'C#N', 'N#N', 'invalid_smiles')
+    >>> molecules = mt.fit_transform(smiles)
+    >>> len(molecules)
+    3
     """
 
-    def __init__(self, **converter_kwargs):
+    def __init__(self, invalid: str = 'skip', **converter_kwargs):
+        self.invalid = invalid
         self.converter_kwargs = converter_kwargs
 
     # noinspection PyUnusedLocal
-    def fit(self, compounds: Iterable[str], y_ignored=None) -> 'MoleculeTransformer':
+    def fit(self, compounds: Collection[str], unused_y=None) -> 'MoleculeTransformer':
         # noinspection PyAttributeOutsideInit
         self.n_features_in_ = 1
-
         return self
 
-    def transform(self, compounds: Iterable[str]) -> List[Mol]:
-        """Convert SMILES compounds into RDKit molecules. Raise TypeError if there is an
-        invalid compound.
+    def transform(self, compounds: Collection[str]) -> List[Mol]:
+        """Convert SMILES compounds into RDKit molecules.
 
         Parameters
         ----------
-        compounds : iterable of str
-            SMILES compounds.
+        compounds : collection of str
+            SMILES strings.
 
         Returns
         -------
@@ -92,18 +104,13 @@ class MoleculeTransformer(BaseEstimator, TransformerMixin):
 
         Raises
         ------
-        TypeError
-            If any compound is invalid.
+        InvalidSMILESError
+            If `self.invalid='raise'` and at least one compound has invalid SMILES.
         """
         check_array(
-            compounds,
-            accept_large_sparse=False,
-            dtype='object',
-            ensure_2d=False,
-        )
-
+            compounds, accept_large_sparse=False, dtype='object', ensure_2d=False)
         return check_compounds_valid(
-            compounds, raise_exception=True, **self.converter_kwargs)
+            compounds, invalid=self.invalid, **self.converter_kwargs)
 
 
 class RDKitDescriptorTransformer(BaseEstimator, TransformerMixin):
@@ -119,7 +126,7 @@ class RDKitDescriptorTransformer(BaseEstimator, TransformerMixin):
     """
 
     # noinspection PyUnusedLocal
-    def fit(self, compounds: Iterable[str], y_ignored=None):
+    def fit(self, compounds: Iterable[Mol], unused_y=None):
         # noinspection PyAttributeOutsideInit
         # noinspection PyProtectedMember
         self.descriptor_names_ = tuple(name for name, func in Descriptors._descList)
@@ -129,13 +136,13 @@ class RDKitDescriptorTransformer(BaseEstimator, TransformerMixin):
         return self
 
     # noinspection PyMethodMayBeStatic
-    def transform(self, molecules: List[Mol]):
-        """Return a numpy array of calculated RDKit descriptors.
+    def transform(self, molecules: Iterable[Mol]):
+        """Return calculated RDKit descriptors.
 
         Parameters
         ----------
-        molecules : list of rdkit.Chem.Mol
-            A list of RDKit molecules.
+        molecules : iterable of rdkit.Chem.Mol
+            RDKit molecules.
 
         Returns
         -------
