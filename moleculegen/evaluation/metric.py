@@ -42,7 +42,9 @@ import numpy as np
 import scipy.stats as stats
 from rdkit.Chem import MolFromSmiles
 
-from ..description.base import get_descriptors_df
+from ..description.base import check_compounds_valid
+from ..description.common import get_descriptor_df_from_mol
+from ..description.fingerprints import InternalTanimoto
 from ..description.physicochemical import PHYSCHEM_DESCRIPTOR_MAP
 
 
@@ -519,6 +521,29 @@ class KLDivergence(Metric):
        J. Chem. Inf. Model. 2019, 59, 1096−1108
     """
 
+    @staticmethod
+    def calculate_for_continuous(data_train: np.array, data_valid: np.array) -> Real:
+        kde_desc_train = stats.gaussian_kde(data_train)
+        kde_desc_valid = stats.gaussian_kde(data_valid)
+
+        interval = np.linspace(
+            start=min(data_train.min(), data_valid.min()),
+            stop=max(data_train.max(), data_valid.max()),
+            num=1000,
+        )
+
+        return stats.entropy(
+            kde_desc_train.evaluate(interval) + 1e-10,
+            kde_desc_valid.evaluate(interval) + 1e-10,
+        )
+
+    @staticmethod
+    def calculate_for_discrete(data_train: np.array, data_valid: np.array) -> Real:
+        hist_train, bins = np.histogram(data_train, density=True)
+        hist_valid, _ = np.histogram(data_valid, bins=bins, density=True)
+
+        return stats.entropy(hist_train + 1e-10, hist_valid + 1e-10)
+
     def _calculate(
             self,
             *,
@@ -526,11 +551,16 @@ class KLDivergence(Metric):
             labels: Sequence[str],
             **kwargs,
     ) -> Tuple[Real, int]:
-        descriptors_valid = get_descriptors_df(predictions, PHYSCHEM_DESCRIPTOR_MAP)
-        if descriptors_valid.shape[0] < 2:
+        molecules_valid = check_compounds_valid(predictions, invalid='skip')
+        if len(molecules_valid) < 2:
             return self.empty_value, 1
 
-        descriptors_train = get_descriptors_df(labels, PHYSCHEM_DESCRIPTOR_MAP)
+        descriptors_valid = get_descriptor_df_from_mol(molecules_valid,
+                                                       PHYSCHEM_DESCRIPTOR_MAP)
+
+        molecules_train = check_compounds_valid(labels, invalid='raise')
+        descriptors_train = get_descriptor_df_from_mol(molecules_train,
+                                                       PHYSCHEM_DESCRIPTOR_MAP)
 
         discrete_cols = set(
             c for c in PHYSCHEM_DESCRIPTOR_MAP.keys()
@@ -540,35 +570,42 @@ class KLDivergence(Metric):
 
         kl_divs = []
 
-        for column in discrete_cols:
-            discrete_data_valid = descriptors_valid[column].values
-            discrete_data_train = descriptors_train[column].values
-
-            hist_valid, bins = np.histogram(discrete_data_valid, density=True)
-            hist_train, _ = np.histogram(discrete_data_train, bins=bins, density=True)
-
-            discrete_div = stats.entropy(hist_train + 1e-10, hist_valid + 1e-10)
-            kl_divs.append(discrete_div)
-
         for column in continuous_cols:
-            continuous_data_valid = descriptors_valid[column].values
-            continuous_data_train = descriptors_train[column].values
+            continuous_data_train = descriptors_train[column].values.astype(np.float16)
+            continuous_data_valid = descriptors_valid[column].values.astype(np.float16)
 
-            kde_desc_valid = stats.gaussian_kde(continuous_data_valid)
-            kde_desc_train = stats.gaussian_kde(continuous_data_train)
+            try:
+                kl_div = self.calculate_for_continuous(
+                    continuous_data_train, continuous_data_valid)
+                kl_divs.append(kl_div)
+            except np.linalg.LinAlgError:
+                return self.empty_value, 1
 
-            interval = np.linspace(
-                start=min(continuous_data_valid.min(), continuous_data_train.min()),
-                stop=max(continuous_data_valid.max(), continuous_data_train.max()),
-                num=1000,
-            )
-            continuous_div = stats.entropy(
-                kde_desc_train.evaluate(interval) + 1e-10,
-                kde_desc_valid.evaluate(interval) + 1e-10,
-            )
-            kl_divs.append(continuous_div)
+        it = InternalTanimoto(dtype=np.float16)
+        sim_train = it.fit_transform(molecules_train)
+        sim_valid = it.fit_transform(molecules_valid)
+        np.fill_diagonal(sim_train, 0.)
+        np.fill_diagonal(sim_valid, 0.)
+        sim_train = sim_train.max(axis=1)
+        sim_valid = sim_valid.max(axis=1)
 
-        return np.mean([np.exp(-kl_div) for kl_div in kl_divs]), 1
+        try:
+            kl_div = self.calculate_for_continuous(sim_train, sim_valid)
+            kl_divs.append(kl_div)
+        except np.linalg.LinAlgError:
+            return self.empty_value, 1
+
+        for column in discrete_cols:
+            discrete_data_train = descriptors_train[column].values.astype(np.int32)
+            discrete_data_valid = descriptors_valid[column].values.astype(np.int32)
+
+            kl_div = self.calculate_for_discrete(
+                discrete_data_train, discrete_data_valid)
+            kl_divs.append(kl_div)
+
+        valid_ratio = len(molecules_valid) / len(predictions)
+        result = valid_ratio * np.mean([np.exp(-kl_div) for kl_div in kl_divs])
+        return result, 1
 
 
 class Perplexity(mx.metric.Perplexity):

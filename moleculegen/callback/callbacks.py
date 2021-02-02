@@ -298,6 +298,9 @@ class ProgressBar(Callback):
         The character inside a progress bar that indicates the jobs done.
     wait_char : str, default '✗'
         The character inside a progress bar that indicates the jobs waiting.
+
+    TODO Remove time calculation and replace 'Loss' with 'Mean loss' at the end of an
+         epoch.
     """
 
     def __init__(

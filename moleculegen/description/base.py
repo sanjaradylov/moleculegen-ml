@@ -16,6 +16,7 @@ __all__ = (
     'get_descriptors',
     'get_descriptors_df',
     'get_descriptor_df_from_mol',
+    'InvalidSMILESError',
 )
 
 
@@ -23,25 +24,33 @@ import array
 from numbers import Real
 from typing import Callable, Dict, Iterable, List
 
-import pandas as pd
+from numpy import NaN
+from pandas import DataFrame
 from rdkit.Chem import Mol, MolFromSmiles
+
+
+class InvalidSMILESError(ValueError):
+    pass
 
 
 def check_compounds_valid(
         compounds: Iterable[str],
-        raise_exception: bool = False,
+        invalid: str = 'skip',
         **converter_kwargs,
 ) -> List[Mol]:
-    """Convert SMILES compounds into RDKit molecules. Accept only valid compounds and if
-    `raise_exception` is True, raise TypeError.
+    """Convert SMILES compounds into RDKit molecules.
 
     Parameters
     ----------
     compounds : iterable of str
         SMILES compounds.
-    raise_exception : bool, default False
-        If any compound is invalid, raise TypeError.
-    converter_kwargs : dict, default {}
+    invalid : {'nan', 'raise', 'skip'}, default='skip'
+        Whether to a) replace invalid SMILES with `numpy.NaN`s, b) raise
+        `InvalidSMILESError`, or c) ignore them.
+
+    Other Parameters
+    ----------------
+    converter_kwargs : dict, default={}
         Optional key-word arguments for `rdkit.Chem.MolFromSmiles`.
 
     Returns
@@ -59,10 +68,13 @@ def check_compounds_valid(
         molecule = MolFromSmiles(compound, **converter_kwargs)
         if molecule is not None:
             molecules.append(molecule)
-        elif raise_exception:
-            raise TypeError(
-                f'cannot convert {compound!r} into molecule: invalid compound'
-            )
+        elif invalid == 'nan':
+            molecules.append(NaN)
+        elif invalid == 'raise':
+            raise InvalidSMILESError(
+                f'cannot convert {compound!r} into molecule: invalid compound')
+        elif invalid == 'skip':
+            continue
 
     return molecules
 
@@ -70,9 +82,9 @@ def check_compounds_valid(
 def get_descriptors_df(
         compounds: Iterable[str],
         function_map: Dict[str, Callable],
-        raise_exception: bool = False,
+        invalid: str = 'skip',
         **converter_kwargs,
-) -> pd.DataFrame:
+) -> DataFrame:
     """Create a pandas.DataFrame instance comprising the descriptors of
     `compounds` declared in `function_map`. The resulting data frame's index
     is `compounds`, the column names are `function_map`s keys, and the values
@@ -85,15 +97,18 @@ def get_descriptors_df(
     function_map : dict, str -> (callable, rdkit.Chem.Mol -> numbers.Real)
         Keys are the column names being assigned to a data frame,
         values are the descriptor function callables to apply to `compounds`.
-    raise_exception : bool, default False
-        If any compound is invalid, raise TypeError.
-    converter_kwargs : dict, default {}
+    invalid : {'nan', 'raise', 'skip'}, default='skip'
+        Whether to a) replace invalid SMILES with `numpy.NaN`s, b) raise
+        `InvalidSMILESError`, or c) ignore them.
+
+    Other Parameters
+    ----------------
+    converter_kwargs : dict, default={}
         Optional key-word arguments for `rdkit.Chem.MolFromSmiles`.
 
     Returns
     -------
-    data_frame : pd.DataFrame
-        Index -- SMILES strings.
+    pd.DataFrame
         Column names -- keys of `function_map`.
         Columns -- descriptor results from `function_map`s mapping.
 
@@ -102,13 +117,13 @@ def get_descriptors_df(
     TypeError
         If any compound is invalid.
 
-    # ??? Should we include SMILES strings?
+    ??? Should we include SMILES strings?
     """
     molecules: List[Mol] = check_compounds_valid(
-        compounds, raise_exception=raise_exception, **converter_kwargs)
+        compounds, invalid=invalid, **converter_kwargs)
 
-    if not isinstance(compounds, pd.DataFrame):
-        compounds = pd.DataFrame()
+    if not isinstance(compounds, DataFrame):
+        compounds = DataFrame()
 
     for name, function in function_map.items():
         results = array.array('f', map(function, molecules))
@@ -133,21 +148,21 @@ def get_descriptors(
     function_map : dict, str -> (callable, rdkit.Chem.Mol -> numbers.Real)
         Keys are the names being assigned to a resulting dictionary,
         values are the descriptor function callables to apply to `compounds`.
-    converter_kwargs : dict, default {}
+
+    Other Parameters
+    ----------------
+    converter_kwargs : dict, default={}
         Optional key-word arguments for `rdkit.Chem.MolFromSmiles`.
 
     Returns
     -------
-    result : dict
+    dict, str -> array.array of float
     """
     molecules: List[Mol] = check_compounds_valid(compounds, **converter_kwargs)
     results: Dict[str, array.array] = {}
 
     for name, fn in function_map.items():
-        results[name] = array.array(
-            'f',
-            (fn(molecule) for molecule in molecules)
-        )
+        results[name] = array.array('f', (fn(molecule) for molecule in molecules))
 
     return results
 
@@ -155,8 +170,8 @@ def get_descriptors(
 def get_descriptor_df_from_mol(
         molecules: Iterable[Mol],
         function_map: Dict[str, Callable[[Mol], Real]],
-) -> pd.DataFrame:
-    data_frame = pd.DataFrame()
+) -> DataFrame:
+    data_frame = DataFrame()
 
     for name, function in function_map.items():
         descriptor: List[Real] = [function(molecule) for molecule in molecules]

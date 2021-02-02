@@ -211,11 +211,18 @@ class KLDivergenceTestCase(unittest.TestCase):
         self.metric = KLDivergence()
 
     def test_1_same_inputs(self):
-        train = ('CCO', 'N#N')
-        valid = train
+        train = (
+            'CN=C=O',
+            'CN1CCC[C@H]1c2cccnc2',
+            'CC[C@H](O1)CC[C@@]12CCCO2',
+            'CN1CCC[C@H]1c2cccnc2',
+            'CC(C)[C@@]12C[C@@H]1[C@@H](C)C(=O)C2',
+            'OCCc1c(C)[n+](cs1)Cc2cnc(C)nc2N',
+        )
+        valid = ('CCO', 'N#N', 'CN=C=O')
         self.metric.update(predictions=valid, labels=train)
 
-        self.assertEqual(self.metric.get()[1], 1.0)
+        self.assertLess(self.metric.get()[1], 0.1)
 
 
 class PerplexityTestCase(unittest.TestCase):
