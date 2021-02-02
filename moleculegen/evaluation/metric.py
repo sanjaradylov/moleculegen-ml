@@ -571,8 +571,8 @@ class KLDivergence(Metric):
         kl_divs = []
 
         for column in continuous_cols:
-            continuous_data_train = descriptors_train[column].values
-            continuous_data_valid = descriptors_valid[column].values
+            continuous_data_train = descriptors_train[column].values.astype(np.float16)
+            continuous_data_valid = descriptors_valid[column].values.astype(np.float16)
 
             try:
                 kl_div = self.calculate_for_continuous(
@@ -581,7 +581,7 @@ class KLDivergence(Metric):
             except np.linalg.LinAlgError:
                 return self.empty_value, 1
 
-        it = InternalTanimoto()
+        it = InternalTanimoto(dtype=np.float16)
         sim_train = it.fit_transform(molecules_train)
         sim_valid = it.fit_transform(molecules_valid)
         np.fill_diagonal(sim_train, 0.)
@@ -596,8 +596,8 @@ class KLDivergence(Metric):
             return self.empty_value, 1
 
         for column in discrete_cols:
-            discrete_data_train = descriptors_train[column].values
-            discrete_data_valid = descriptors_valid[column].values
+            discrete_data_train = descriptors_train[column].values.astype(np.int32)
+            discrete_data_valid = descriptors_valid[column].values.astype(np.int32)
 
             kl_div = self.calculate_for_discrete(
                 discrete_data_train, discrete_data_valid)

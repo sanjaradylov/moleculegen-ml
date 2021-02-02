@@ -116,19 +116,22 @@ class InternalTanimoto(BaseEstimator):
 
     Parameters
     ----------
-    radius : int, default 2
+    radius : int, default=2
         The radius of fingerprint.
-    n_bits : int, default 4096
+    n_bits : int, default=4096
         The number of bits.
+    dtype : str or numpy dtype, default=numpy.float16
     """
 
     def __init__(
             self,
             radius: int = 2,
             n_bits: int = 4096,
+            dtype=np.float16,
     ):
         self.radius = radius
         self.n_bits = n_bits
+        self.dtype = dtype
 
     # noinspection PyUnusedLocal
     def fit(self, molecules: Iterable[Mol], y_ignored=None) -> 'InternalTanimoto':
@@ -160,7 +163,7 @@ class InternalTanimoto(BaseEstimator):
         self.n_features_in_ = 1
 
         n_fingerprints = len(fingerprints)
-        sim_matrix = np.ones((n_fingerprints, n_fingerprints))
+        sim_matrix = np.ones((n_fingerprints, n_fingerprints), dtype=self.dtype)
         for i in range(1, n_fingerprints):
             sim_index = BulkTanimotoSimilarity(fingerprints[i], fingerprints[:i])
             sim_matrix[i, :i] = sim_index
