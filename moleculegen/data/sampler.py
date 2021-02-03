@@ -924,19 +924,17 @@ class SMILESBatchRandomSampler(SMILESBatchSampler):
 
 class SMILESRandomSampler(mx.gluon.data.Sampler):
     """Load SMILES (sub)sequences from `SMILESConsecutiveSampler` and sample
-    `n_samples` sequences w/ replacement.
+    `sample_fractions*len(sampler)` sequences w/ replacement.
 
     Parameters
     ----------
     corpus : list of list of int
         The original data corpus loaded from a vocabulary.
-    n_steps : int, default None
+    n_steps : int, default=None
         The length of a substring.
         If None, it equals to the maximum string length in the corpus minus 1.
-    n_samples : int, default None
-        The number of samples to yield.
-        If None, it equals to the number of loaded sequences from
-        `SMILESConsecutiveSampler`.
+    samples_fraction : float, default=1.0
+        The fraction of samples to yield. Expected `0.0 < samples_fraction <= 1.0`.
 
     Examples
     --------
@@ -1000,17 +998,17 @@ class SMILESRandomSampler(mx.gluon.data.Sampler):
             self,
             corpus: List[List[int]],
             n_steps: Optional[int] = None,
-            n_samples: Optional[int] = None,
+            samples_fraction: float = 1.,
     ):
         self._corpus = corpus
         self._n_steps = n_steps or max(map(len, self._corpus))
+        self._samples_fraction = samples_fraction
 
-        self.__data = tuple(iter(
-            SMILESConsecutiveSampler(self._corpus, self._n_steps, shuffle=False)))
-        self._n_samples = n_samples or len(self.__data)
+        self._n_samples = 0
 
     def __len__(self) -> int:
-        """Return the number of samples.
+        """Return the number of samples from the last iteration or 0 if iteration has
+        not been performed yet.
         """
         return self._n_samples
 
@@ -1021,6 +1019,10 @@ class SMILESRandomSampler(mx.gluon.data.Sampler):
         Yields
         ------
         sample : SMILESConsecutiveSampler.Sample
-            Input-output sequences.
+            Input-output-valid_length sequences.
         """
-        return (random.choice(self.__data) for _ in range(self._n_samples))
+        sampler = SMILESConsecutiveSampler(self._corpus, self._n_steps, shuffle=True)
+        data = tuple(iter(sampler))
+        self._n_samples = int(self._samples_fraction * len(data))
+
+        return (random.choice(data) for _ in range(self._n_samples))
