@@ -22,7 +22,8 @@ import collections
 import functools
 import itertools
 import pickle
-from typing import Counter, Dict, FrozenSet, Generator, List, Optional, Sequence, Union
+from typing import (
+    Collection, Counter, Dict, FrozenSet, Generator, List, Optional, Sequence, Union)
 
 from mxnet.gluon.data import SimpleDataset
 
@@ -31,7 +32,9 @@ from .loader import SMILESDataset
 
 
 class SMILESVocabulary:
-    """A dictionary to map SMILES characters into numerical representation.
+    """A dictionary to map SMILES characters into numerical IDs, load a corpus of token
+    IDs, and calculate token statistics.
+
     Read SMILES strings from `dataset` and create a token counter,
     or work directly with `tokens` if specified. Eventually obtain unique
     SMILES tokens and their frequencies to create token-to-index and
@@ -42,28 +45,36 @@ class SMILESVocabulary:
 
     Parameters
     ----------
-    dataset : SMILESDataset, default None
+    dataset : SMILESDataset, default=None
         SMILES data set.
-    tokens : list of list of str, default None
+    tokens : list of list of str, default=None
         SMILES tokens.
-    need_corpus : bool, default False
+    need_corpus : bool, default=False
         If True, load `corpus`property of token IDs for every SMILES sequence.
         Pass non-empty `dataset` or `tokens`.
-    min_count : int, default 1
+    min_count : int, default=1
         The minimum number of token occurrences. If the frequency of a token is less than
         `min_count`, then the SMILES string containing this token will not be saved in a
         corpus.
         The parameter will be ignored if `load_from_pickle` is passed.
-
-        ??? Note that while ignoring tokens and corresponding SMILES strings, we keep the
-        statistics of the whole data in `dataset`. We do not recalculate the numbers even
-        when encountering redundant tokens.
-    match_bracket_atoms : bool, default False
+    allowed_tokens : collection of str, default=frozenset()
+        The set of allowed tokens; other tokens and the SMILES strings containing them
+        will not be included. By default (empty frozenset), include all tokens from
+        `dataset` or `tokens`.
+    prohibited_tokens : collection of str, default=frozenset()
+        The set of prohibited tokens. By default (empty frozenset), include either all
+        tokens or `allowed_tokens`. Note that both `prohibited_tokens` and
+        allowed_tokens` cannot be used.
+    match_bracket_atoms : bool, default=False
         During tokenization, whether to treat the subcompounds enclosed in []
         as separate tokens.
 
-    load_from_pickle : str, default None
-        If passed, load all the attributes from the file named `load_from_pickle`.
+    Other parameters
+    ----------------
+    load_from_pickle : str, default=None
+        If passed, load all the attributes from the file named `load_from_pickle` and
+        ignore other parameters.
+
 
     The following metadata will be stored for every vocabulary instance. To save them in
     a pickled file, use the `to_pickle` method. To load them from the file to initialize
@@ -84,6 +95,43 @@ class SMILESVocabulary:
     ------
     ValueError
         If all parameters `dataset`, `tokens`, and `load_from_pickle` are empty.
+        If both `allowed_tokens` and `prohibited_tokens` were passed.
+
+    Examples
+    --------
+    >>> # We will use a list of tokens instead of an entire dataset.
+    >>> tokens = [
+    ['C', 'C', 'O'],
+    ['N', '#', 'N'],
+    ['C', '#', 'N'],
+    ['C', 'C', 'O', 'C', '(', '=', 'O', ')'],
+    ]
+    >>> v = SMILESVocabulary(tokens=tokens, need_corpus=True)
+    >>> v.token_freqs
+    {'C': 6, 'O': 3, 'N': 3, '#': 2, '(': 1, '=': 1, ')': 1}
+    >>> len(v.corpus) == 4
+    True
+    >>> v = SMILESVocabulary(tokens=tokens, need_corpus=True, min_count=2)
+    >>> v.token_freqs  # See Notes
+    {'C': 6, 'O': 3, 'N': 3, '#': 2}
+    >>> v = SMILESVocabulary(tokens=tokens, need_corpus=True, allowed_tokens=set('NC#'))
+    >>> v.token_freqs
+    {'C': 6, 'N': 3, '#': 2}
+    >>> v = SMILESVocabulary(
+    ...     tokens=tokens, need_corpus=True, min_count=2, prohibited_tokens=set('N#'))
+    >>> v.token_freqs
+    {'C': 6, 'O': 3}
+    >>> v.corpus
+    [[3, 3, 4]]
+    >>> ''.join(v.get_tokens(v.corpus[0]))
+    CCO
+
+    Notes
+    -----
+    ??? Note that while ignoring tokens and corresponding SMILES strings (when
+        `min_count`, `allowed_tokens`, `prohibited_tokens` are specified), we keep the
+        statistics of the whole data in `dataset`. We do not recalculate the numbers even
+        when encountering redundant tokens.
     """
 
     # Special token IDs.
@@ -98,6 +146,8 @@ class SMILESVocabulary:
             tokens: Optional[List[List[str]]] = None,
             need_corpus: bool = False,
             min_count: int = 1,
+            allowed_tokens: Collection[str] = frozenset(),
+            prohibited_tokens: Collection[str] = frozenset(),
             match_bracket_atoms: bool = False,
             load_from_pickle: Optional[str] = None,
     ):
@@ -118,22 +168,41 @@ class SMILESVocabulary:
                     'must be passed if `load_from_pickle` (a path to the '
                     'pickled file with data) is empty.'
                 )
+            if allowed_tokens and prohibited_tokens:
+                raise ValueError(
+                    'Both `allowed_tokens` and `prohibited_tokens` cannot be passed.'
+                )
 
             tokens: List[List[str]] = (
                 tokens
                 or [Token.tokenize(sample, match_bracket_atoms) for sample in dataset]
             )
             counter: Counter[str] = count_tokens(tokens)
-            redundant_tokens: FrozenSet[str] = frozenset(
-                token
-                for token, count in counter.items()
-                if count < min_count
-            )
-            # All numbers counts will remain the same (see docs).
+
+            all_tokens: FrozenSet[str] = frozenset(counter.keys())
+            allowed_tokens = allowed_tokens or all_tokens
+            if min_count > 1:
+                redundant_tokens: FrozenSet[str] = frozenset(
+                    token
+                    for token, count in counter.items()
+                    if count < min_count
+                )
+            else:
+                redundant_tokens = frozenset()
+            redundant_tokens = redundant_tokens.union(
+                all_tokens.difference(allowed_tokens))
+            # All token counts will remain the same (see docs).
             for token in redundant_tokens:
                 counter.pop(token)
+            if prohibited_tokens:
+                for token in frozenset(prohibited_tokens):
+                    try:
+                        counter.pop(token)
+                    except KeyError:
+                        pass
+
             has_redundant_tokens = functools.partial(
-                has_tokens, token_set=redundant_tokens)
+                has_tokens, token_set=redundant_tokens.union(prohibited_tokens))
 
             self._token_freqs: Dict[str, int] = dict(sorted(
                 counter.items(), key=lambda c: c[1], reverse=True))
@@ -154,7 +223,7 @@ class SMILESVocabulary:
 
     def __repr__(self) -> str:
         tokens = ''
-        max_length = 60
+        max_length = 70
         current_length = 0
 
         for token in self._token_to_idx:
@@ -172,23 +241,11 @@ class SMILESVocabulary:
 
     def __len__(self) -> int:
         """Return the number of unique tokens.
-
-        Returns
-        -------
-        n : int
         """
         return len(self._idx_to_token)
 
     def __contains__(self, token: str) -> bool:
         """Check if `token` is in the vocabulary.
-
-        Parameters
-        ----------
-        token : str
-
-        Returns
-        -------
-        check : bool
         """
         return token in self._token_freqs
 
