@@ -17,6 +17,7 @@ __all__ = (
 
 import abc
 import contextlib
+import datetime
 import functools
 import io
 import itertools
@@ -80,6 +81,7 @@ class CallbackList:
         self._verbose = verbose
 
         self._callbacks: List[Callback] = []
+        self._begin_time: Optional[float] = None
 
     def _callbacks_call(self, method_name: str, **fit_kwargs: Any):
         """Call `on_*` methods on every callback in the list. Redirect the output
@@ -180,12 +182,14 @@ class CallbackList:
     def on_train_begin(self, **fit_kwargs):
         """Call at the beginning of training process.
         """
+        self._launch_timer()
         self._callbacks_call('on_train_begin', **fit_kwargs)
 
     def on_train_end(self, **fit_kwargs):
         """Call at the end of training process.
         """
         self._callbacks_call('on_train_end', **fit_kwargs)
+        self._log_train_time()
 
     def on_batch_begin(self, **fit_kwargs):
         """Call at the beginning of batch sampling.
@@ -211,6 +215,7 @@ class CallbackList:
         """Call on keyboard interruption.
         """
         self._callbacks_call('on_keyboard_interrupt', **fit_kwargs)
+        self._log_train_time()
 
     def add(self, callback: Callback, *callbacks: Callback):
         """Append callback(s) to the list.
@@ -281,3 +286,18 @@ class CallbackList:
         int
         """
         return len(self._callbacks)
+
+    def _launch_timer(self):
+        if self._log_handler is not None or self._verbose:
+            self._begin_time = time.time()
+
+    def _log_train_time(self):
+        assert self._begin_time is not None, 'timer was not launched'
+
+        if self._log_handler is not None or self._verbose:
+            end_time = time.time() - self._begin_time
+
+            stdout = sys.stdout if self._verbose else None
+            handlers = [h for h in (self._log_handler, stdout) if h is not None]
+            for handler in handlers:
+                handler.write(f'Time: {datetime.timedelta(seconds=end_time)}')
