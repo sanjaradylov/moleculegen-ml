@@ -39,7 +39,6 @@ from typing import Deque, List, Optional, Sequence, Union
 
 import matplotlib.pyplot as plt
 import mxnet as mx
-from rdkit.Chem import MolFromSmiles
 
 from .base import Callback
 from ..description.base import get_descriptors_df
@@ -582,14 +581,14 @@ class PhysChemDescriptorPlotter(Callback):
     image_file_prefix : str
         The prefix of saved images (e.g. if prefix is 'descriptors', then files will have
         names 'descriptors_epoch_1.png', ..., 'descriptors_epoch_N.png').
-    epoch : int, default None
+    epoch : int, default=None
         If None, plot only after the full training process.
         If int, plot every `epoch`th epoch.
-    predictor : BaseSearch, default None
+    predictor : moleculegen.generation.BaseSearch, default=None
         If not None, generate a validation SMILES data of size equalling to the training
         data from this predictor.
         Pass either `predictor` or `valid_data_file_prefix`.
-    valid_data_file_prefix : str, default None
+    valid_data_file_prefix : str, default=None
         If not None, load the validation data from files with names
         '{valid_data_file_prefix}_epoch_{epoch}.csv'.
         Pass either `predictor` or `valid_data_file_prefix`.
@@ -613,9 +612,14 @@ class PhysChemDescriptorPlotter(Callback):
         self._image_file_prefix = image_file_prefix
         self._epoch = epoch
 
-        # ??? If enable `on_train_begin` method, run the code below inside this method.
-        self._train_data_t = get_descriptors_df(train_data, PHYSCHEM_DESCRIPTOR_MAP)
-        self._train_data_t = self._transformer.fit_transform(self._train_data_t)
+        self._train_data = train_data
+
+    def on_train_begin(self, **fit_kwargs):
+        """Generate physicochemical descriptors for training data and apply manifold
+        transformation.
+        """
+        self._train_data = get_descriptors_df(self._train_data, PHYSCHEM_DESCRIPTOR_MAP)
+        self._train_data = self._transformer.fit_transform(self._train_data)
 
     def on_epoch_begin(self, **fit_kwargs):
         n_epochs = fit_kwargs.get('n_epochs')
@@ -643,7 +647,7 @@ class PhysChemDescriptorPlotter(Callback):
             plt.figure(figsize=(10, 10))
             plt.title(f'Phys.Chem Descriptors ({self._transformer.__class__.__name__})')
             plt.scatter(
-                self._train_data_t[:, 0], self._train_data_t[:, 1],
+                self._train_data[:, 0], self._train_data[:, 1],
                 label='Training', c='m', edgecolors='k', alpha=0.5,
             )
             plt.scatter(
@@ -659,16 +663,19 @@ class PhysChemDescriptorPlotter(Callback):
             if self._valid_data_file_prefix is not None:
                 with open(f'{self._valid_data_file_prefix}_epoch_{epoch}.csv') as fh:
                     valid_data_desc = get_descriptors_df(
-                        [s for s in fh.readlines() if MolFromSmiles(s) is not None],
-                        PHYSCHEM_DESCRIPTOR_MAP,
+                        compounds=fh.readlines(),
+                        function_map=PHYSCHEM_DESCRIPTOR_MAP,
+                        invalid='raise',
                     )
             else:
                 valid_data_desc = (
-                    self._predictor() for _ in range(self._train_data_t.shape[0])
+                    self._predictor() for _ in range(len(self._train_data))
                 )
-                valid_data_desc = [
-                    s for s in valid_data_desc if MolFromSmiles(s) is not None
-                ]
+                valid_data_desc = get_descriptors_df(
+                    compounds=valid_data_desc,
+                    function_map=PHYSCHEM_DESCRIPTOR_MAP,
+                    invalid='skip',
+                )
 
             valid_data_t = get_valid_data_desc()
             plot()
