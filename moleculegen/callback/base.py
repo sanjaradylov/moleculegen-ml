@@ -27,9 +27,13 @@ from typing import Any, Callable, List, Optional, TextIO
 
 class Callback(metaclass=abc.ABCMeta):
     """An ABC to build new callbacks.
-
-    # ??? Do we need `on_train_begin` and `on_train_end` methods?
     """
+
+    def on_train_begin(self, **fit_kwargs):
+        """Call at the beginning of training process."""
+
+    def on_train_end(self, **fit_kwargs):
+        """Call at the end of training process."""
 
     def on_batch_begin(self, **fit_kwargs):
         """Call at the beginning of batch sampling."""
@@ -172,6 +176,16 @@ class CallbackList:
                     caller(**fit_kwargs)
 
         call()
+
+    def on_train_begin(self, **fit_kwargs):
+        """Call at the beginning of training process.
+        """
+        self._callbacks_call('on_train_begin', **fit_kwargs)
+
+    def on_train_end(self, **fit_kwargs):
+        """Call at the end of training process.
+        """
+        self._callbacks_call('on_train_end', **fit_kwargs)
 
     def on_batch_begin(self, **fit_kwargs):
         """Call at the beginning of batch sampling.
