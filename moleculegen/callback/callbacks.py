@@ -29,8 +29,6 @@ __all__ = (
 
 
 import collections
-import datetime
-import math
 import statistics
 import sys
 import tempfile
@@ -297,9 +295,6 @@ class ProgressBar(Callback):
         The character inside a progress bar that indicates the jobs done.
     wait_char : str, default '✗'
         The character inside a progress bar that indicates the jobs waiting.
-
-    TODO Remove time calculation and replace 'Loss' with 'Mean loss' at the end of an
-         epoch.
     """
 
     def __init__(
@@ -327,8 +322,6 @@ class ProgressBar(Callback):
         self._batch_time: Optional[float] = None  # Batch execution time.
 
         self._epoch: Optional[int] = None  # Current epoch.
-        self._epoch_start_time: Optional[float] = None  # Epoch countdown.
-        self._epoch_time: Optional[float] = None  # Epoch execution time.
 
         self._loss_list: Optional[List[float]] = None  # List of losses.
 
@@ -341,7 +334,7 @@ class ProgressBar(Callback):
             'Epoch {epoch} '
             + self.__left_border + '{bar}' + self.__right_border + ' '
             + 'Batch {batch_no}/' + str(self._n_batches) + ', '
-            + 'Loss {loss:.3f}, '
+            + 'Loss {loss_mean:.3f} (+/-{loss_std:.3f}), '
             + '{batch_time:.3f} sec/batch'
         )
 
@@ -371,8 +364,6 @@ class ProgressBar(Callback):
             - n_epochs
             - epoch
         """
-        self._epoch_start_time = time.time()
-
         epoch_digits = len(str(fit_kwargs.get('n_epochs')))
         self._epoch = f'{fit_kwargs.get("epoch"):>{epoch_digits}}'
 
@@ -401,8 +392,10 @@ class ProgressBar(Callback):
             - loss
             - batch_no
         """
-        loss: float = fit_kwargs.get('loss').mean().item()
-        self._loss_list.append(loss)
+        loss: mx.np.ndarray = fit_kwargs.get('loss')
+        loss_mean: float = loss.mean().item()
+        loss_std: float = loss.std().item()
+        self._loss_list.append(loss_mean)
 
         self._batch_time = time.time() - self._batch_start_time
 
@@ -421,24 +414,32 @@ class ProgressBar(Callback):
                 epoch=self._epoch,
                 bar=''.join(self._bar),
                 batch_no=batch_no_str,
-                loss=loss,
+                loss_mean=loss_mean,
+                loss_std=loss_std,
                 batch_time=self._batch_time,
             )
         )
         sys.stdout.flush()
 
-        if batch_no >= self._n_batches:
-            sys.stdout.write('\n')
-
     def on_epoch_end(self, **fit_kwargs):
         """End countdown. Write execution time and mean loss.
         """
-        self._epoch_time = math.ceil(time.time() - self._epoch_start_time)
+        loss_mean = statistics.mean(self._loss_list)
+        loss_std = statistics.stdev(self._loss_list)
+
+        batch_no = f'{self._n_batches:>{self._batch_digits}}'
 
         sys.stdout.write(
-            f'Time {datetime.timedelta(seconds=self._epoch_time)}, '
-            f'Mean loss: {statistics.mean(self._loss_list):.3f} '
-            f'(+/-{statistics.stdev(self._loss_list):.3f})\n'
+            '\r'
+            + self.format.format(
+                epoch=self._epoch,
+                bar=''.join(self._bar),
+                batch_no=batch_no,
+                loss_mean=loss_mean,
+                loss_std=loss_std,
+                batch_time=self._batch_time,
+            )
+            + '\n'
         )
 
     def on_keyboard_interrupt(self, **fit_kwargs):
