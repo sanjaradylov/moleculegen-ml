@@ -350,6 +350,16 @@ class ProgressBar(Callback):
         """
         self._bar: Deque[str] = collections.deque([self.__wait_char] * length)
 
+    def on_train_begin(self, **fit_kwargs):
+        """Compute and save the number of batches.
+
+        Parameters
+        ----------
+        Expected named arguments:
+            - batch_sampler
+        """
+        self._n_batches = len(fit_kwargs.get('batch_sampler'))
+
     def on_epoch_begin(self, **fit_kwargs):
         """Initialize a progress bar and a loss list. Start countdown. Retrieve the
         number of epochs and batches.
@@ -368,7 +378,6 @@ class ProgressBar(Callback):
 
         self._loss_list = []
 
-        self._n_batches = len(fit_kwargs.get('batch_sampler'))
         self._batches_per_char = self._n_batches // self.__length or 1
         self._batch_digits = len(str(self._n_batches))
 
@@ -665,7 +674,7 @@ class PhysChemDescriptorPlotter(Callback):
                     valid_data_desc = get_descriptors_df(
                         compounds=fh.readlines(),
                         function_map=PHYSCHEM_DESCRIPTOR_MAP,
-                        invalid='raise',
+                        invalid='skip',
                     )
             else:
                 valid_data_desc = (
