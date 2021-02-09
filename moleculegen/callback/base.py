@@ -292,8 +292,6 @@ class CallbackList:
             self._begin_time = time.time()
 
     def _log_train_time(self):
-        assert self._begin_time is not None, 'timer was not launched'
-
         if self._log_handler is not None or self._verbose:
             end_time = time.time() - self._begin_time
 
