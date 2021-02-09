@@ -201,6 +201,8 @@ class SMILESEncoderDecoderABC(gluon.HybridBlock, metaclass=abc.ABCMeta):
             trainer = gluon.Trainer(self.collect_params(), optimizer)
             state_func: Callable = batch_sampler.init_state_func()
 
+            callback_list.on_train_begin(**init_params)
+
             for epoch in range(1, n_epochs + 1):
 
                 init_params['epoch'] = epoch
@@ -237,6 +239,8 @@ class SMILESEncoderDecoderABC(gluon.HybridBlock, metaclass=abc.ABCMeta):
 
                 init_params['model'] = self
                 callback_list.on_epoch_end(**init_params, **train_params)
+
+            callback_list.on_train_end(**init_params)
 
         except KeyboardInterrupt:
             init_params['model'] = self
