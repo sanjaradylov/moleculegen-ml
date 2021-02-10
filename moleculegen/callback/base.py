@@ -55,21 +55,26 @@ class Callback(metaclass=abc.ABCMeta):
 class CallbackList:
     """A list of callbacks. Perform callbacks sequentially and log output messages.
 
-    Instantiate a callback list and append one or more callbacks:
-    `callbacks = CallbackList(); callbacks.add(callback1, ..., callbackN)`
-
-    ??? The strategy is to redirect every stdout message of callbacks into a log file,
-    and optionally print back to stdout. Can we implement more convenient strategy, for
-    example, using logging API?
-
     Parameters
     ----------
-    log_handler : file-like, default None
+    log_handler : file-like, default=None
         A log file handler.
         If None, simply call every callback, and if they print/save any messages, they
         will not be redirected.
-    verbose : bool, default False
+    verbose : bool, default=False
         If `log_handler` is not None, whether to print logs to stdout.
+
+    Instantiate a callback list and append one or more callbacks:
+    `callbacks = CallbackList(); callbacks.add(callback1, ..., callbackN)`
+    If a log file is passed, logs are in the format
+        {date_time} :: {method_name} :: {class_name}
+            {log_message}
+
+    Notes
+    -----
+    ??? The logging strategy is to redirect every stdout message of callbacks into a log
+        file, and optionally print back to stdout. Can we implement more convenient
+        strategy, for example, using logging API?
     """
 
     def __init__(
@@ -91,7 +96,7 @@ class CallbackList:
         ----------
         method_name : str
             The name of a callback call (e.g. 'on_batch_end').
-        fit_kwargs : dict, str -> any
+        fit_kwargs : dict, str -> any, default={}
             The key-word arguments for callback calls (see `Callback` ABC docs).
         """
 
@@ -122,62 +127,52 @@ class CallbackList:
         def current_time() -> str:
             return time.strftime('%a, %d %b %Y %H:%M:%S')
 
-        # Redirect outputs into the file handler, but also print in stdout.
-        if self._log_handler is not None and self._verbose:
-            def call():
-                for callback in self._callbacks:
-                    caller: Callable = redirect_stdout(getattr(callback, method_name))
+        # For verbose mode, simply call every callback and let them perform IO operations
+        # by default;
+        if self._verbose and self._log_handler is None:
+            for callback in self._callbacks:
+                getattr(callback, method_name)(**fit_kwargs)
 
-                    # Log messages in both the log handler and stdout.
-                    for handler in (self._log_handler, sys.stdout):
-                        if method_name in ('on_epoch_begin', 'on_epoch_end'):
-                            handler.write(
-                                f'{current_time()}'
-                                f' :: {method_name}'
-                                f' :: {callback.__class__.__name__}'
-                                f'\n'
-                            )
+        # otherwise, redirect output messages into the file handler and/or stdout,
+        # or suppress them.
+        else:
+            handlers = []
+            if self._log_handler is not None:
+                handlers.append(self._log_handler)
+            if self._verbose:
+                handlers.append(sys.stdout)
 
-                        log: str = caller(**fit_kwargs)
-                        if log:
-                            # For `ProgressBar` and similar callbacks.
-                            if log.startswith('\r'):
-                                handler.write(f'\r\t{log[1:]}')
-                                handler.flush()
-                            else:
-                                handler.write(f'\t{log}')
+            for callback in self._callbacks:
+                caller: Callable = redirect_stdout(getattr(callback, method_name))
+                log: str = caller(**fit_kwargs)
 
-        # Redirect outputs into the file handler.
-        elif self._log_handler is not None and not self._verbose:
-            def call():
-                for callback in self._callbacks:
-                    caller: Callable = redirect_stdout(getattr(callback, method_name))
-
-                    if method_name in ('on_epoch_begin', 'on_epoch_end'):
-                        self._log_handler.write(
+                for handler in handlers:
+                    if method_name in (
+                            'on_epoch_begin',
+                            'on_epoch_end',
+                            'on_train_begin',
+                            'on_train_end',
+                            'on_keyboard_interrupt',
+                    ):
+                        handler.write(
                             f'{current_time()}'
                             f' :: {method_name}'
                             f' :: {callback.__class__.__name__}'
                             f'\n'
                         )
-
-                    log: str = caller(**fit_kwargs)
                     if log:
                         # For `ProgressBar` and similar callbacks.
                         if log.startswith('\r'):
-                            self._log_handler.write(f'\r\t{log[1:]}')
-                            self._log_handler.flush()
+                            if (
+                                # write only logs of `on_epoch_*` methods to logger, or
+                                'epoch' in method_name
+                                # any log to stdout
+                                or handler is sys.stdout
+                            ):
+                                handler.write(f'\r\t{log[1:]}')
+                                handler.flush()
                         else:
-                            self._log_handler.write(f'\t{log}')
-
-        # Simply call every callback.
-        else:
-            def call():
-                for callback in self._callbacks:
-                    caller: Callable = getattr(callback, method_name)
-                    caller(**fit_kwargs)
-
-        call()
+                            handler.write(f'\t{log}')
 
     def on_train_begin(self, **fit_kwargs):
         """Call at the beginning of training process.
@@ -223,7 +218,7 @@ class CallbackList:
         Parameters
         ----------
         callback : Callback
-        callbacks : tuple of Callback, default ()
+        callbacks : tuple of Callback, default=()
 
         Raises
         ------
@@ -280,10 +275,6 @@ class CallbackList:
 
     def __len__(self) -> int:
         """Return the number of callbacks in the list.
-
-        Returns
-        -------
-        int
         """
         return len(self._callbacks)
 
