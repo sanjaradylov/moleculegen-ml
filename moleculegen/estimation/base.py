@@ -21,7 +21,7 @@ import mxnet as mx
 from mxnet import autograd, gluon
 
 from ..callback.base import Callback, CallbackList
-from ..data.sampler import BatchSampler
+from ..data.sampler import SMILESBatchSampler
 from ..evaluation.loss import get_mask_for_loss
 from .._types import ContextT, InitializerT, OptimizerT
 
@@ -143,7 +143,7 @@ class SMILESEncoderDecoderABC(gluon.HybridBlock, metaclass=abc.ABCMeta):
 
     def fit(
             self,
-            batch_sampler: BatchSampler,
+            batch_sampler,
             optimizer: mx.optimizer.Optimizer,
             loss_fn: gluon.loss.Loss,
             n_epochs: int = 1,
@@ -318,7 +318,7 @@ class SMILESLM(mx.gluon.Block, metaclass=abc.ABCMeta):
 
     def fit(
             self,
-            batch_sampler: BatchSampler,
+            batch_sampler: SMILESBatchSampler,
             optimizer: OptimizerT = 'adam',
             loss_fn: Optional[mx.gluon.loss.Loss] = None,
             n_epochs: int = 1,
@@ -331,7 +331,7 @@ class SMILESLM(mx.gluon.Block, metaclass=abc.ABCMeta):
 
         Parameters
         ----------
-        batch_sampler : moleculegen.data.BatchSampler
+        batch_sampler : moleculegen.data.SMILESBatchSampler
             The dataloader to sample mini-batches.
         optimizer : {'sgd', 'nag', 'adagrad', 'rmsprop', 'adadelta', 'adam', 'nadam',
                 'ftml'} or mxnet.optimizer.Optimizer,
