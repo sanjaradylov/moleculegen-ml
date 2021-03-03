@@ -432,7 +432,8 @@ class SMILESLM(mx.gluon.Block, metaclass=abc.ABCMeta):
             if log_handler is not None:
                 log_handler.close()
 
-            callback_list.on_train_end(**init_params)
+            if callback_list is not None:
+                callback_list.on_train_end(**init_params)
 
     @classmethod
     def load_fine_tuner(
