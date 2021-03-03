@@ -12,13 +12,17 @@ SMILESEncoderDecoderFineTuner
 """
 
 __all__ = (
+    'SMILESLM',
     'SMILESEncoderDecoder',
     'SMILESEncoderDecoderABC',
     'SMILESEncoderDecoderFineTuner',
 )
 
 
-from .base import SMILESEncoderDecoderABC
+from .base import (
+    SMILESEncoderDecoderABC,
+    SMILESLM,
+)
 from .model import (
     SMILESEncoderDecoder,
     SMILESEncoderDecoderFineTuner,
