@@ -251,7 +251,7 @@ class SMILESEncoderDecoder(SMILESEncoderDecoderABC):
             initialize=raw_data['initialize'],
             tie_weights=raw_data['tie_weights'],
             dtype=raw_data['dtype'],
-            ctx=_gluon_common.CTX_MAP[raw_data['ctx'].lower()],
+            ctx=_gluon_common.get_ctx(raw_data['ctx'].lower()),
             prefix=raw_data['prefix'],
 
             use_one_hot=raw_data['embedding']['use_one_hot'],

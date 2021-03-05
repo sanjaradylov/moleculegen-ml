@@ -2,12 +2,12 @@
 Gluon objects and sequential models used in the subpackage.
 """
 
-from typing import Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import mxnet as mx
 from mxnet import gluon
 
-from .._types import ActivationT
+from .._types import ActivationT, ContextT
 
 
 # Available RNNs.
@@ -24,10 +24,23 @@ INIT_MAP: Dict[str, mx.init.Initializer] = {
     'xavier': mx.init.Xavier(),
 }
 
-CTX_MAP: Dict[str, mx.context.Context] = {
-    'cpu': mx.context.cpu(),
-    'gpu': mx.context.gpu(),
+
+CTX_MAP: Dict[str, Callable[[int], mx.context.Context]] = {
+    'cpu': mx.context.cpu,
+    'gpu': mx.context.gpu,
 }
+
+
+def get_ctx(ctx: str) -> ContextT:
+    ctx_name, *ctx_ids = ctx.split(':')
+    ctx_f = CTX_MAP[ctx_name]
+
+    if len(ctx_ids) == 0:  # ctx == 'gpu'
+        return ctx_f(0)
+    elif len(ctx_ids) == 1:  # e.g. ctx == 'gpu:0'
+        return ctx_f(int(ctx_ids[0]))
+    else:  # e.g. ctx == 'gpu:0:1:2'
+        return [ctx_f(int(id_)) for id_ in ctx_ids]
 
 
 def mlp(
@@ -40,7 +53,7 @@ def mlp(
         dropout: Union[float, List[float]],
         prefix: Optional[str] = 'decoder_',
         params: Optional[mx.gluon.ParameterDict] = None,
-) -> gluon.Block:
+) -> Union[gluon.nn.Dense, gluon.nn.HybridSequential]:
     """A single dense layer or an MLP built with mxnet.gluon.nn.HybridSequential.
     """
     n_hidden_layers = n_layers - 1
