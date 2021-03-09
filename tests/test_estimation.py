@@ -13,7 +13,7 @@ from moleculegen.data import (
     SMILESBatchColumnSampler,
     SMILESVocabulary,
 )
-from moleculegen.estimation import SMILESEncoderDecoder
+from moleculegen.estimation import SMILESRNN
 from .utils import TempSMILESFile
 
 
@@ -33,20 +33,20 @@ class SMILESEncoderDecoderTestCase(unittest.TestCase):
         self.n_rnn_layers = 1  # Used in output/state shape testing.
         self.n_rnn_units = 32  # Used in output/state shape testing.
 
-        self.model = SMILESEncoderDecoder(
+        self.model = SMILESRNN(
             len(self.vocabulary),
             use_one_hot=False,
             embedding_dim=4,
+            embedding_dropout=0.25,
             embedding_init=mx.init.Orthogonal(),
             rnn='lstm',
-            n_rnn_layers=self.n_rnn_layers,
-            n_rnn_units=self.n_rnn_units,
+            rnn_n_layers=self.n_rnn_layers,
+            rnn_n_units=self.n_rnn_units,
             rnn_dropout=0.0,
             rnn_init=mx.init.Normal(),
-            n_dense_layers=1,
-            n_dense_units=64,
+            dense_n_layers=1,
             dense_activation='relu',
-            dense_dropout=0.0,
+            dense_dropout=0.5,
             dense_init=mx.init.Xavier(),
             dtype='float32',
             prefix='model_'
@@ -67,8 +67,8 @@ class SMILESEncoderDecoderTestCase(unittest.TestCase):
 
     def test_2_outputs(self):
         inputs = next(iter(self.batch_sampler)).inputs
-        states = self.model.begin_state(self.batch_sampler.batch_size)
-        outputs, states = self.model(inputs, states)
+        self.model.begin_state(self.batch_sampler.batch_size)
+        outputs = self.model(inputs)
 
         self.assertTupleEqual(
             (
@@ -84,7 +84,7 @@ class SMILESEncoderDecoderTestCase(unittest.TestCase):
                 self.batch_sampler.batch_size,
                 self.n_rnn_units,
             ),
-            states[0].shape,
+            self.model.state[0].shape,
         )
 
     def test_3_fit(self):
@@ -99,6 +99,7 @@ class SMILESEncoderDecoderTestCase(unittest.TestCase):
             loss_fn=gluon.loss.SoftmaxCELoss(),
             n_epochs=10,
             callbacks=callbacks,
+            verbose=True,
         )
 
     def tearDown(self):
