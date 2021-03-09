@@ -431,6 +431,8 @@ class Validity(Metric):
         n_samples: int = 0
 
         for n_samples, smiles in enumerate(predictions, start=1):
+            if not smiles:
+                continue
             molecule = MolFromSmiles(smiles)
             if molecule is not None:
                 result += 1
@@ -500,11 +502,15 @@ class RAC(Metric):
             label_set = frozenset(labels)
 
             for smiles in predictions:
+                if not smiles:
+                    continue
                 molecule = MolFromSmiles(smiles)
                 if molecule is not None and smiles not in label_set:
                     result += 1
         else:
             for smiles in predictions:
+                if not smiles:
+                    continue
                 molecule = MolFromSmiles(smiles)
                 if molecule is not None:
                     result += 1
