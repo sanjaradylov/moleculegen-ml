@@ -10,7 +10,7 @@ __all__ = (
 )
 
 import json
-from typing import Callable, List, Optional, Union
+from typing import Callable, List, Literal, Optional, Union
 
 import mxnet as mx
 
@@ -98,14 +98,14 @@ class SMILESRNN(SMILESLM):
 
     Attributes
     ----------
-    ctx : mxnet.context.Context
+    ctx : mxnet.context.Context or list of mxnet.context.Context
         The model's context.
-    embedding : OneHotEncoder or mxnet.gluon.nn.Embedding
+    embedding : moleculegen.description.OneHotEncoder or mxnet.gluon.nn.Embedding
+            or mxnet.gluon.nn.HybridSequential
         An embedding block.
-    encoder : mxnet.gluon.rnn.RNN or mxnet.gluon.rnn.LSTM
-            or mxnet.gluon.rnn.GRU
+    encoder : mxnet.gluon.rnn.RNN or mxnet.gluon.rnn.LSTM or mxnet.gluon.rnn.GRU
         An RNN encoder block.
-    decoder : mxnet.gluon.nn.Dense or mxnet.gluon.nn.Sequential
+    decoder : mxnet.gluon.nn.Dense or mxnet.gluon.nn.HybridSequential
         A Feed-Forward NN decoder block.
     state : list of mxnet.np.ndarray, shape = (rnn_n_layers, batch size, n_rnn_units)
         The hidden state of `encoder`.
@@ -129,7 +129,7 @@ class SMILESRNN(SMILESLM):
             embedding_init: InitializerT = mx.init.Uniform(),
             embedding_prefix: str = 'embedding_',
 
-            rnn: str = 'lstm',
+            rnn: Literal['lstm', 'gru', 'vanilla'] = 'lstm',
             rnn_n_layers: int = 2,
             rnn_n_units: int = 256,
             rnn_dropout: float = 0.6,
@@ -154,31 +154,6 @@ class SMILESRNN(SMILESLM):
             prefix: Optional[str] = None,
             params: Optional[mx.gluon.ParameterDict] = None,
     ):
-        # Validate the formal parameters that are not explicitly sent into and
-        # validated in mxnet.gluon objects.
-        if not isinstance(use_one_hot, bool):
-            raise TypeError(
-                '`use_one_hot` must be either True for OneHotEncoder layer '
-                'or False for Embedding layer.'
-            )
-
-        if not isinstance(initialize, bool):
-            raise TypeError(
-                '`initialize` must be either True for deferred '
-                'initialization or False for no initialization.'
-            )
-
-        if rnn not in _gluon_common.RNN_MAP:
-            raise ValueError(
-                f'The recurrent layer must be one of '
-                f'{list(_gluon_common.RNN_MAP.keys())}.'
-            )
-
-        if dense_n_layers < 1:
-            raise ValueError(
-                'The number of dense layers must be positive non-zero.'
-            )
-
         if (
                 tie_weights
                 and (
@@ -211,7 +186,7 @@ class SMILESRNN(SMILESLM):
                     seq_prefix = f'{embedding_prefix.rstrip("_")}seq_'
                     self._embedding = mx.gluon.nn.HybridSequential(prefix=seq_prefix)
                     self._embedding.add(embedding_block)
-                    self._embedding.add(mx.gluon.nn.Dropout(embedding_dropout))
+                    self._embedding.add(mx.gluon.nn.Dropout(embedding_dropout, axes=1))
                     shared_params = self._embedding[0].params if tie_weights else None
                 else:
                     self._embedding = embedding_block
@@ -279,7 +254,7 @@ class SMILESRNN(SMILESLM):
 
         Parameters
         ----------
-        batch_size : int, default 0
+        batch_size : int, default=0
             Batch size.
         func_kwargs
             Additional arguments for RNN layer's `begin_state` method
@@ -342,8 +317,8 @@ class SMILESRNN(SMILESLM):
             rnn_dropout=raw_data['encoder']['dropout'],
             rnn_init=_gluon_common.INIT_MAP[raw_data['encoder']['init'].lower()],
             rnn_prefix=raw_data['encoder']['prefix'],
-            rnn_reinit_state=raw_data['encoder']['rnn_reinit_state'],
-            rnn_detach_state=raw_data['encoder']['rnn_detach_state'],
+            rnn_reinit_state=raw_data['encoder']['reinit_state'],
+            rnn_detach_state=raw_data['encoder']['detach_state'],
 
             dense_n_layers=raw_data['decoder']['n_layers'],
             dense_n_units=raw_data['decoder']['n_units'],
