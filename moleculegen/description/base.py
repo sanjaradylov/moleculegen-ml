@@ -1,14 +1,10 @@
 """
 Utilities to create tables of descriptors.
 
-Functions
----------
-check_compounds_valid
-    Convert SMILES compounds into RDKit molecules.
-get_descriptors
-    Create a dictionary of descriptors.
-get_descriptors_df
-    Create a pandas.DataFrame of descriptors.
+Functions:
+    check_compounds_valid: Convert SMILES compounds into RDKit molecules.
+    get_descriptors: Create a dictionary of descriptors.
+    get_descriptors_df: Create a pandas.DataFrame of descriptors.
 """
 
 __all__ = (
@@ -65,6 +61,8 @@ def check_compounds_valid(
     molecules: List[Mol] = []
 
     for compound in compounds:
+        if not compound:
+            continue
         molecule = MolFromSmiles(compound, **converter_kwargs)
         if molecule is not None:
             molecules.append(molecule)
