@@ -19,7 +19,7 @@ __all__ = (
 
 
 import functools
-from typing import Callable, List
+from typing import Callable, List, Optional
 
 import mxnet as mx
 
@@ -260,14 +260,19 @@ class SoftmaxSearch(BaseSearch):
             prefix: str = Token.BOS,
             max_length: int = 100,
             temperature: float = 1.0,
+            normalizer: Optional[Callable[..., mx.np.ndarray]] = None,
+            distribution: Optional[Callable[..., int]] = None,
     ):
+        normalizer = normalizer or _numpy_softmax
+        distribution = distribution or _multinomial
+
         super().__init__(
             model=model,
             vocabulary=vocabulary,
             prefix=prefix,
             max_length=max_length,
-            normalizer=functools.partial(_numpy_softmax, temperature=temperature),
-            distribution=_multinomial,
+            normalizer=functools.partial(normalizer, temperature=temperature),
+            distribution=distribution,
         )
 
         self.temperature = temperature
