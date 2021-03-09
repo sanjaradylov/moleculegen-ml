@@ -11,43 +11,9 @@ from moleculegen.data import (
     SMILESDataset,
     SMILESVocabulary,
 )
-from moleculegen.estimation import SMILESEncoderDecoder
-from moleculegen.generation import GreedySearch
+from moleculegen.estimation import SMILESRNN
 from moleculegen.generation.search import SoftmaxSearch, ArgmaxSearch
 from .utils import TempSMILESFile
-
-
-class GreedySearchTestCase(unittest.TestCase):
-    def setUp(self):
-        temp_file = TempSMILESFile(
-            tempfile_kwargs={'prefix': 'greedy_search'})
-        self.fh = temp_file.open()
-
-        dataset = SMILESDataset(self.fh.name)
-        self.vocabulary = SMILESVocabulary(dataset, need_corpus=True)
-
-        self.model = SMILESEncoderDecoder(len(self.vocabulary))
-
-        self.predictor = GreedySearch()
-
-    def test_call(self):
-        self.model.initialize()
-        states = self.model.begin_state(batch_size=1)
-
-        valid_tokens = Token.get_all_tokens() - frozenset(Token.UNK)
-
-        for _ in range(100):
-
-            smiles = self.predictor(self.model, states, self.vocabulary)
-
-            for token in Token.tokenize(smiles):
-                if len(token) == 1 and token.islower():
-                    token = token.upper()
-
-                self.assertIn(token, valid_tokens)
-
-    def tearDown(self):
-        self.fh.close()
 
 
 class ArgmaxSearchTestCase(unittest.TestCase):
@@ -58,7 +24,7 @@ class ArgmaxSearchTestCase(unittest.TestCase):
         dataset = SMILESDataset(self.fh.name)
         self.vocabulary = SMILESVocabulary(dataset, need_corpus=True)
 
-        self.model = SMILESEncoderDecoder(len(self.vocabulary))
+        self.model = SMILESRNN(len(self.vocabulary))
 
         self.predictor = ArgmaxSearch(self.model, self.vocabulary)
 
@@ -84,7 +50,7 @@ class ArgmaxSearchTestCase(unittest.TestCase):
         self.fh.close()
 
 
-class SoftmaxSamplerTestCase(unittest.TestCase):
+class SoftmaxSearchTestCase(unittest.TestCase):
     def setUp(self):
         temp_file = TempSMILESFile(tempfile_kwargs={'prefix': 'softmax_sampler'})
         self.fh = temp_file.open()
@@ -92,7 +58,7 @@ class SoftmaxSamplerTestCase(unittest.TestCase):
         dataset = SMILESDataset(self.fh.name)
         self.vocabulary = SMILESVocabulary(dataset, need_corpus=True)
 
-        self.model = SMILESEncoderDecoder(len(self.vocabulary))
+        self.model = SMILESRNN(len(self.vocabulary))
 
         self.predictor = SoftmaxSearch(self.model, self.vocabulary)
 
