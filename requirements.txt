@@ -1,1 +1,1 @@
-mxnet-cu101==1.7.0
+mxnet-cu101==1.7.0.post1

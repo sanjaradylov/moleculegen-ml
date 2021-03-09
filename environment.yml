@@ -2,10 +2,10 @@ name: moleculegen
 channels:
   - conda-forge
 dependencies:
-  - python=3.7
+  - python=3.8
   - pip
   - rdkit
   - pandas
   - scikit-learn
   - pip:
-    - mxnet==1.6.0
+    - mxnet==1.7.0.post1
