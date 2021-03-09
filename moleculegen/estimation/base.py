@@ -15,6 +15,7 @@ __all__ = (
 
 import abc
 import json
+import warnings
 from typing import Callable, List, Optional, Sequence, TextIO, Tuple
 
 import mxnet as mx
@@ -47,6 +48,15 @@ class SMILESEncoderDecoderABC(gluon.HybridBlock, metaclass=abc.ABCMeta):
             prefix: Optional[str] = None,
             params: Optional[gluon.ParameterDict] = None,
     ):
+        warnings.warn(
+            message=(
+                f'{self.__class__.__name__} is deprecated; '
+                f'wil be removed in 1.1.0.'
+                f'consider `moleculegen.estimation.SMILESLM` instead.'
+            ),
+            category=DeprecationWarning,
+        )
+
         super().__init__(prefix=prefix, params=params)
 
         self.__ctx = ctx
