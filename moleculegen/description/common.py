@@ -1,14 +1,10 @@
 """
-Common feature transformers.
+Common feature preprocessing methods.
 
-Classes
--------
-OneHotEncoder
-    One-hot encoder functor.
-MoleculeTransformer
-    Convert SMILES compounds into RDKit molecules.
-RDKitDescriptorTransformer
-    Calculate RDKit descriptors.
+Classes:
+    OneHotEncoder: One-hot encoder functor.
+    MoleculeTransformer: Convert SMILES compounds into RDKit molecules.
+    RDKitDescriptorTransformer: Calculate RDKit descriptors.
 """
 
 __all__ = (
@@ -29,7 +25,7 @@ from sklearn.utils import check_array
 from .base import check_compounds_valid, get_descriptor_df_from_mol
 
 
-class OneHotEncoder:
+class OneHotEncoder(mx.gluon.HybridBlock):
     """One-hot encoder class. It is implemented as a functor for more
     convenience, to pass it as a detached embedding layer.
 
@@ -39,24 +35,26 @@ class OneHotEncoder:
         The depth of one-hot encoding.
     """
 
-    def __init__(self, depth: int):
+    def __init__(self, depth: int, **kwargs):
+        super().__init__(prefix=kwargs.get('prefix'), params=None)
+
         self.depth = depth
 
-    def __call__(self, indices: mx.np.ndarray, *args, **kwargs) -> mx.np.ndarray:
+    def hybrid_forward(self, module, indices: mx.np.ndarray, *args, **kwargs) \
+            -> mx.np.ndarray:
         """Return one-hot encoded tensor.
 
         Parameters
         ----------
+        module : mxnet.symbol or mxnet.nd
         indices : nx.np.ndarray or mx.sym.Symbol
             The indices (categories) to encode.
         *args, **kwargs
-            Additional arguments for `nd.one_hot`.
+            Additional arguments for `mxnet.nd.one_hot`.
         """
-        if isinstance(indices, mx.sym.Symbol):
-            return mx.sym.one_hot(
-                indices.as_nd_ndarray(), self.depth, *args, **kwargs).as_np_ndarray()
-        # noinspection PyUnresolvedReferences
-        return mx.npx.one_hot(indices, self.depth, *args, **kwargs)
+        # FIXME `one_hot` doesn't support numpy arrays...
+        return module.one_hot(
+            indices.as_nd_ndarray(), self.depth, *args, **kwargs).as_np_ndarray()
 
 
 class MoleculeTransformer(BaseEstimator, TransformerMixin):
@@ -67,7 +65,7 @@ class MoleculeTransformer(BaseEstimator, TransformerMixin):
     invalid : {'nan', 'raise', 'skip'}, default='skip'
         Whether to a) replace invalid SMILES with `numpy.NaN`s, b) raise
         `InvalidSMILESError`, or c) ignore them.
-    converter_kwargs : dict, default {}
+    converter_kwargs : dict, default={}
         Optional key-word arguments for `rdkit.Chem.MolFromSmiles`.
 
     Examples

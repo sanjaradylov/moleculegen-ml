@@ -29,8 +29,6 @@ __all__ = (
 
 
 import collections
-import datetime
-import math
 import statistics
 import sys
 import tempfile
@@ -39,7 +37,6 @@ from typing import Deque, List, Optional, Sequence, Union
 
 import matplotlib.pyplot as plt
 import mxnet as mx
-from rdkit.Chem import MolFromSmiles
 
 from .base import Callback
 from ..description.base import get_descriptors_df
@@ -298,9 +295,6 @@ class ProgressBar(Callback):
         The character inside a progress bar that indicates the jobs done.
     wait_char : str, default '✗'
         The character inside a progress bar that indicates the jobs waiting.
-
-    TODO Remove time calculation and replace 'Loss' with 'Mean loss' at the end of an
-         epoch.
     """
 
     def __init__(
@@ -328,8 +322,6 @@ class ProgressBar(Callback):
         self._batch_time: Optional[float] = None  # Batch execution time.
 
         self._epoch: Optional[int] = None  # Current epoch.
-        self._epoch_start_time: Optional[float] = None  # Epoch countdown.
-        self._epoch_time: Optional[float] = None  # Epoch execution time.
 
         self._loss_list: Optional[List[float]] = None  # List of losses.
 
@@ -342,7 +334,7 @@ class ProgressBar(Callback):
             'Epoch {epoch} '
             + self.__left_border + '{bar}' + self.__right_border + ' '
             + 'Batch {batch_no}/' + str(self._n_batches) + ', '
-            + 'Loss {loss:.3f}, '
+            + 'Loss {loss_mean:.3f} (+/-{loss_std:.3f}), '
             + '{batch_time:.3f} sec/batch'
         )
 
@@ -350,6 +342,16 @@ class ProgressBar(Callback):
         """Initialize a progress bar `self._bar`.
         """
         self._bar: Deque[str] = collections.deque([self.__wait_char] * length)
+
+    def on_train_begin(self, **fit_kwargs):
+        """Compute and save the number of batches.
+
+        Parameters
+        ----------
+        Expected named arguments:
+            - batch_sampler
+        """
+        self._n_batches = len(fit_kwargs.get('batch_sampler'))
 
     def on_epoch_begin(self, **fit_kwargs):
         """Initialize a progress bar and a loss list. Start countdown. Retrieve the
@@ -362,14 +364,11 @@ class ProgressBar(Callback):
             - n_epochs
             - epoch
         """
-        self._epoch_start_time = time.time()
-
         epoch_digits = len(str(fit_kwargs.get('n_epochs')))
         self._epoch = f'{fit_kwargs.get("epoch"):>{epoch_digits}}'
 
         self._loss_list = []
 
-        self._n_batches = len(fit_kwargs.get('batch_sampler'))
         self._batches_per_char = self._n_batches // self.__length or 1
         self._batch_digits = len(str(self._n_batches))
 
@@ -393,8 +392,10 @@ class ProgressBar(Callback):
             - loss
             - batch_no
         """
-        loss: float = fit_kwargs.get('loss').mean().item()
-        self._loss_list.append(loss)
+        loss: mx.np.ndarray = fit_kwargs.get('loss')
+        loss_mean: float = loss.mean().item()
+        loss_std: float = loss.std().item()
+        self._loss_list.append(loss_mean)
 
         self._batch_time = time.time() - self._batch_start_time
 
@@ -413,24 +414,32 @@ class ProgressBar(Callback):
                 epoch=self._epoch,
                 bar=''.join(self._bar),
                 batch_no=batch_no_str,
-                loss=loss,
+                loss_mean=loss_mean,
+                loss_std=loss_std,
                 batch_time=self._batch_time,
             )
         )
         sys.stdout.flush()
 
-        if batch_no >= self._n_batches:
-            sys.stdout.write('\n')
-
     def on_epoch_end(self, **fit_kwargs):
         """End countdown. Write execution time and mean loss.
         """
-        self._epoch_time = math.ceil(time.time() - self._epoch_start_time)
+        loss_mean = statistics.mean(self._loss_list)
+        loss_std = statistics.stdev(self._loss_list)
+
+        batch_no = f'{self._n_batches:>{self._batch_digits}}'
 
         sys.stdout.write(
-            f'Time {datetime.timedelta(seconds=self._epoch_time)}, '
-            f'Mean loss: {statistics.mean(self._loss_list):.3f} '
-            f'(+/-{statistics.stdev(self._loss_list):.3f})\n'
+            '\r'
+            + self.format.format(
+                epoch=self._epoch,
+                bar=''.join(self._bar),
+                batch_no=batch_no,
+                loss_mean=loss_mean,
+                loss_std=loss_std,
+                batch_time=self._batch_time,
+            )
+            + '\n'
         )
 
     def on_keyboard_interrupt(self, **fit_kwargs):
@@ -582,14 +591,14 @@ class PhysChemDescriptorPlotter(Callback):
     image_file_prefix : str
         The prefix of saved images (e.g. if prefix is 'descriptors', then files will have
         names 'descriptors_epoch_1.png', ..., 'descriptors_epoch_N.png').
-    epoch : int, default None
+    epoch : int, default=None
         If None, plot only after the full training process.
         If int, plot every `epoch`th epoch.
-    predictor : BaseSearch, default None
+    predictor : moleculegen.generation.BaseSearch, default=None
         If not None, generate a validation SMILES data of size equalling to the training
         data from this predictor.
         Pass either `predictor` or `valid_data_file_prefix`.
-    valid_data_file_prefix : str, default None
+    valid_data_file_prefix : str, default=None
         If not None, load the validation data from files with names
         '{valid_data_file_prefix}_epoch_{epoch}.csv'.
         Pass either `predictor` or `valid_data_file_prefix`.
@@ -613,9 +622,14 @@ class PhysChemDescriptorPlotter(Callback):
         self._image_file_prefix = image_file_prefix
         self._epoch = epoch
 
-        # ??? If enable `on_train_begin` method, run the code below inside this method.
-        self._train_data_t = get_descriptors_df(train_data, PHYSCHEM_DESCRIPTOR_MAP)
-        self._train_data_t = self._transformer.fit_transform(self._train_data_t)
+        self._train_data = train_data
+
+    def on_train_begin(self, **fit_kwargs):
+        """Generate physicochemical descriptors for training data and apply manifold
+        transformation.
+        """
+        self._train_data = get_descriptors_df(self._train_data, PHYSCHEM_DESCRIPTOR_MAP)
+        self._train_data = self._transformer.fit_transform(self._train_data)
 
     def on_epoch_begin(self, **fit_kwargs):
         n_epochs = fit_kwargs.get('n_epochs')
@@ -643,7 +657,7 @@ class PhysChemDescriptorPlotter(Callback):
             plt.figure(figsize=(10, 10))
             plt.title(f'Phys.Chem Descriptors ({self._transformer.__class__.__name__})')
             plt.scatter(
-                self._train_data_t[:, 0], self._train_data_t[:, 1],
+                self._train_data[:, 0], self._train_data[:, 1],
                 label='Training', c='m', edgecolors='k', alpha=0.5,
             )
             plt.scatter(
@@ -659,16 +673,19 @@ class PhysChemDescriptorPlotter(Callback):
             if self._valid_data_file_prefix is not None:
                 with open(f'{self._valid_data_file_prefix}_epoch_{epoch}.csv') as fh:
                     valid_data_desc = get_descriptors_df(
-                        [s for s in fh.readlines() if MolFromSmiles(s) is not None],
-                        PHYSCHEM_DESCRIPTOR_MAP,
+                        compounds=fh.readlines(),
+                        function_map=PHYSCHEM_DESCRIPTOR_MAP,
+                        invalid='skip',
                     )
             else:
                 valid_data_desc = (
-                    self._predictor() for _ in range(self._train_data_t.shape[0])
+                    self._predictor() for _ in range(len(self._train_data))
                 )
-                valid_data_desc = [
-                    s for s in valid_data_desc if MolFromSmiles(s) is not None
-                ]
+                valid_data_desc = get_descriptors_df(
+                    compounds=valid_data_desc,
+                    function_map=PHYSCHEM_DESCRIPTOR_MAP,
+                    invalid='skip',
+                )
 
             valid_data_t = get_valid_data_desc()
             plot()

@@ -23,6 +23,8 @@ class ProgressBarTestCase(unittest.TestCase):
         n_batches = 40
         batch_sampler = list(range(n_batches))
 
+        callback.on_train_begin(batch_sampler=batch_sampler)
+
         for epoch in range(1, n_epochs + 1):
             callback.on_epoch_begin(
                 batch_sampler=batch_sampler, n_epochs=n_epochs, epoch=epoch)
@@ -35,6 +37,8 @@ class ProgressBarTestCase(unittest.TestCase):
                 callback.on_batch_end(loss=loss, batch_no=batch_no)
 
             callback.on_epoch_end()
+
+        callback.on_train_end()
 
 
 if __name__ == '__main__':

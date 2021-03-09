@@ -1,25 +1,16 @@
 """
 Create, train, evaluate, and fine-tune generative models.
 
-Classes
--------
-SMILESEncoderDecoderABC
-    An ABC for a generative recurrent neural network to encode-decode SMILES strings.
-SMILESEncoderDecoder
-    A generative recurrent neural network to encode-decode SMILES strings.
-SMILESEncoderDecoderFineTuner
-    The fine-tuner of SMILESEncoderDecoder model.
+Classes:
+    SMILESLM: An ABC for generative language models.
+    SMILESRNN: A generative recurrent neural network to encode-decode SMILES strings.
 """
 
 __all__ = (
-    'SMILESEncoderDecoder',
-    'SMILESEncoderDecoderABC',
-    'SMILESEncoderDecoderFineTuner',
+    'SMILESLM',
+    'SMILESRNN',
 )
 
 
-from .base import SMILESEncoderDecoderABC
-from .model import (
-    SMILESEncoderDecoder,
-    SMILESEncoderDecoderFineTuner,
-)
+from .base import SMILESLM
+from .rnn import SMILESRNN

@@ -15,6 +15,7 @@ __all__ = (
 )
 
 import json
+import warnings
 from typing import Optional, Union
 
 import mxnet as mx
@@ -124,6 +125,14 @@ class SMILESEncoderDecoder(SMILESEncoderDecoderABC):
             prefix: Optional[str] = None,
             params: Optional[gluon.ParameterDict] = None,
     ):
+        warnings.warn(
+            message=(
+                f'{self.__class__.__name__} is deprecated; '
+                f'wil be removed in 1.1.0.'
+                f'consider `moleculegen.estimation.SMILESRNN` instead.'
+            ),
+            category=DeprecationWarning,
+        )
         # Validate the formal parameters that are not explicitly sent into and
         # validated in mxnet.gluon objects.
         if not isinstance(use_one_hot, bool):
@@ -251,7 +260,7 @@ class SMILESEncoderDecoder(SMILESEncoderDecoderABC):
             initialize=raw_data['initialize'],
             tie_weights=raw_data['tie_weights'],
             dtype=raw_data['dtype'],
-            ctx=_gluon_common.CTX_MAP[raw_data['ctx'].lower()],
+            ctx=_gluon_common.get_ctx(raw_data['ctx'].lower()),
             prefix=raw_data['prefix'],
 
             use_one_hot=raw_data['embedding']['use_one_hot'],
@@ -378,6 +387,14 @@ class SMILESEncoderDecoderFineTuner(SMILESEncoderDecoderABC):
             prefix: Optional[str] = None,
             params: Optional[gluon.ParameterDict] = None,
     ):
+        warnings.warn(
+            message=(
+                f'{self.__class__.__name__} is deprecated; '
+                f'wil be removed in 1.1.0.'
+                f'consider `moleculegen.estimation.SMILESRNN.load_fine_tuner` instead.'
+            ),
+            category=DeprecationWarning,
+        )
         super().__init__(ctx=ctx, prefix=prefix, params=params)
 
         model.ctx = self.ctx

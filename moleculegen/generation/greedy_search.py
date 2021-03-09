@@ -13,6 +13,7 @@ __all__ = (
 
 
 import inspect
+import warnings
 from typing import Any, Callable, List
 
 from mxnet import context, np, npx
@@ -86,6 +87,14 @@ class GreedySearch:
             distribution: Callable = _nd_multinomial,
             ctx: Callable = _mxnet_ctx,
     ):
+        warnings.warn(
+            message=(
+                f'{self.__class__.__name__} is deprecated; '
+                f'wil be removed in 1.1.0.'
+                f'consider `moleculegen.generation.SoftmaxSearch` instead.'
+            ),
+            category=DeprecationWarning,
+        )
         if not all(
                 hasattr(obj, '__call__') for obj in (
                     data_type, normalizer, distribution, ctx,

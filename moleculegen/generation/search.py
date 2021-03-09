@@ -1,20 +1,13 @@
 """
 SMILES samplers to generate new molecules using various greedy search methods.
 
-Classes
--------
-BaseSearch
-    The base SMILES sampler class.
-
-ArgmaxSearch
-    Generate new SMILES strings using greedy search (argmax) method.
-
-SoftmaxSearch
-    Softmax with a sensitivity parameter followed by sampling from multinomial
-    distribution.
-GumbelSoftmaxSearch
-    Gumbel-Softmax with a sensitivity parameter followed by sampling from multinomial
-    distribution.
+Classes:
+    BaseSearch: The base SMILES sampler class.
+    ArgmaxSearch: Generate new SMILES strings using greedy search (argmax) method.
+    SoftmaxSearch: Softmax with a sensitivity parameter followed by sampling from
+        multinomial distribution.
+    GumbelSoftmaxSearch: Gumbel-Softmax with a sensitivity parameter followed by sampling
+        from multinomial distribution.
 """
 
 __all__ = (
@@ -32,7 +25,7 @@ import mxnet as mx
 
 from ..base import Token
 from ..data.vocabulary import SMILESVocabulary
-from ..estimation.base import SMILESEncoderDecoderABC
+from ..estimation.base import SMILESLM
 
 
 class BaseSearch:
@@ -40,16 +33,14 @@ class BaseSearch:
 
     Parameters
     ----------
-    model : SMILESEncoderDecoderABC
+    model : moleculegen.estimation.SMILESLM
         A (trained) language model. Generates one token ID in one step.
-    vocabulary : SMILESVocabulary
+    vocabulary : moleculegen.data.SMILESVocabulary
         A SMILES vocabulary. Provides id-to-token conversion.
     prefix : str
         The prefix of a SMILES string to generate.
     max_length : int
         The maximum number of tokens in the SMILES string being generated.
-    state_initializer : callable, any -> mx.nd.NDArray
-        The model's hidden state initializer function (e.g. mx.nd.ones).
     normalizer : callable, any -> mx.np.ndarray
         A function that accepts model's outputs (logits) and returns probabilities.
     distribution : callable, any -> int
@@ -59,14 +50,13 @@ class BaseSearch:
 
     def __init__(
             self,
-            model: SMILESEncoderDecoderABC,
+            model: SMILESLM,
             vocabulary: SMILESVocabulary,
             *,
             prefix: str,
             max_length: int,
-            state_initializer: Callable[..., mx.nd.NDArray],
-            normalizer: Callable,
-            distribution: Callable,
+            normalizer: Callable[..., mx.np.ndarray],
+            distribution: Callable[..., int],
     ):
         self._model = model
         self._vocabulary = vocabulary
@@ -75,7 +65,6 @@ class BaseSearch:
 
         self.prefix = prefix
         self.max_length = max_length
-        self.state_initializer = state_initializer
 
     @property
     def prefix(self) -> str:
@@ -127,7 +116,7 @@ class BaseSearch:
         self.__max_length = max_length
 
     @property
-    def model(self) -> SMILESEncoderDecoderABC:
+    def model(self) -> SMILESLM:
         return self._model
 
     @property
@@ -152,8 +141,12 @@ class BaseSearch:
         -------
         smiles : str
         """
-        # Initialize hidden states.
-        states = self._model.begin_state(batch_size=1, func=self.state_initializer)
+        # If the inherited model class has a hidden state, `empty_state` is
+        # expected to free its content (e.g. set to None) prior to training
+        # and `begin_state` to reinitialize its content.
+        getattr(self._model, 'empty_state', lambda: None)()
+        getattr(self._model, 'begin_state', lambda *a: None)(1)
+
         # Tokenize sequence correctly.
         tokens: List[str] = Token.tokenize(self.prefix)
         # Save predicted token IDs.
@@ -162,19 +155,20 @@ class BaseSearch:
         # Update `states` on prefix tokens (no prediction is made).
         for token in tokens[1:]:
             token_id = self._np_token_data([token_ids[-1]])
-            _, states = self._model(token_id, states)
+            self._model(token_id)
             token_ids.append(self._vocabulary[token])
 
         # Predict the next token IDs.
         for n_iter in range(self.max_length):
-            inputs = self._np_token_data([token_ids[-1]])
-            outputs, states = self._model(inputs, states)
+            inputs = self._np_token_data([token_ids[-1]])  # shape=(1, 1)
+            outputs = self._model(inputs)  # shape=(1, 1, len(self._vocabulary))
 
-            # Normalize outputs to get probabilities (e.g. using softmax).
+            # Normalize outputs to get probabilities (e.g. using softmax);
+            # probabilities.shape == (1, len(self._vocabulary)).
             probabilities: mx.np.ndarray = self._normalizer(outputs[0])
 
             # Sample from a distribution (e.g. multinomial).
-            next_token_id: int = self._distribution(probabilities)
+            next_token_id: int = self._distribution(probabilities[0])
 
             # Interrupt, if End-of-SMILES token is generated.
             token: str = self._vocabulary.idx_to_token[next_token_id]
@@ -205,42 +199,36 @@ class ArgmaxSearch(BaseSearch):
 
     Parameters
     ----------
-    model : SMILESEncoderDecoderABC
+    model : moleculegen.estimation.SMILESLM
         A (trained) language model. Generates one token ID in one step.
-    vocabulary : SMILESVocabulary
+    vocabulary : moleculegen.data.SMILESVocabulary
         A SMILES vocabulary. Provides id-to-token conversion.
-    prefix : str
+    prefix : str, default=moleculegen.Token.BOS
         The prefix of a SMILES string to generate.
-    max_length : int
+    max_length : int, default=100
         The maximum number of tokens in the SMILES string being generated.
-    state_initializer : callable, any -> mx.nd.NDArray
-        The model's hidden state initializer function (e.g. mx.nd.ones).
     """
 
     def __init__(
             self,
-            model: SMILESEncoderDecoderABC,
+            model: SMILESLM,
             vocabulary: SMILESVocabulary,
             *,
             prefix: str = Token.BOS,
-            max_length: int = 80,
-            state_initializer: Callable[..., mx.nd.NDArray] = mx.nd.uniform,
+            max_length: int = 100,
     ):
         super().__init__(
             model=model,
             vocabulary=vocabulary,
             prefix=prefix,
             max_length=max_length,
-            state_initializer=state_initializer,
             normalizer=_identity,
             distribution=_argmax,
         )
 
 
-def _nd_multinomial(probabilities: mx.np.ndarray) -> int:
-    sample = mx.random.multinomial(probabilities.as_nd_ndarray())
-    sample = sample.as_np_ndarray().item()
-    return sample
+def _multinomial(probabilities: mx.np.ndarray) -> int:
+    return mx.random.multinomial(probabilities.as_nd_ndarray()).asscalar()
 
 
 # noinspection PyUnresolvedReferences
@@ -253,42 +241,37 @@ class SoftmaxSearch(BaseSearch):
 
     Parameters
     ----------
-    model : SMILESEncoderDecoderABC
+    model : moleculegen.estimation.SMILESLM
         A (trained) language model. Generates one token ID in one step.
-    vocabulary : SMILESVocabulary
+    vocabulary : moleculegen.data.SMILESVocabulary
         A SMILES vocabulary. Provides id-to-token conversion.
-    prefix : str, default Token.BOS
+    prefix : str, default=moleculegen.Token.BOS
         The prefix of a SMILES string to generate.
-    max_length : int, default 80
+    max_length : int, default=100
         The maximum number of tokens in the SMILES string being generated.
-    temperature : float, default 1.0
+    temperature : float, default=1.0
         A sensitivity parameter.
-    state_initializer : callable, any -> mx.nd.NDArray
-        The model's hidden state initializer function (e.g. mx.nd.ones).
     """
     def __init__(
             self,
-            model: SMILESEncoderDecoderABC,
+            model: SMILESLM,
             vocabulary: SMILESVocabulary,
             *,
             prefix: str = Token.BOS,
-            max_length: int = 80,
+            max_length: int = 100,
             temperature: float = 1.0,
-            state_initializer: Callable[..., mx.nd.NDArray] = mx.nd.zeros,
             normalizer: Optional[Callable[..., mx.np.ndarray]] = None,
             distribution: Optional[Callable[..., int]] = None,
     ):
         normalizer = normalizer or _numpy_softmax
-        distribution = distribution or _nd_multinomial
-        normalizer_part = functools.partial(normalizer, temperature=temperature)
+        distribution = distribution or _multinomial
 
         super().__init__(
             model=model,
             vocabulary=vocabulary,
             prefix=prefix,
             max_length=max_length,
-            state_initializer=state_initializer,
-            normalizer=normalizer_part,
+            normalizer=functools.partial(normalizer, temperature=temperature),
             distribution=distribution,
         )
 
@@ -334,41 +317,32 @@ class GumbelSoftmaxSearch(SoftmaxSearch):
 
     Parameters
     ----------
-    model : SMILESEncoderDecoderABC
+    model : moleculegen.estimation.SMILESLM
         A (trained) language model. Generates one token ID in one step.
-    vocabulary : SMILESVocabulary
+    vocabulary : moleculegen.dataSMILESVocabulary
         A SMILES vocabulary. Provides id-to-token conversion.
-    prefix : str, default Token.BOS
+    prefix : str, default=moleculegen.Token.BOS
         The prefix of a SMILES string to generate.
-    max_length : int, default 80
+    max_length : int, default=100
         The maximum number of tokens in the SMILES string being generated.
-    temperature : float, default 1.0
+    temperature : float, default=1.0
         A sensitivity parameter.
-    state_initializer : callable, any -> mx.nd.NDArray
-        The model's hidden state initializer function (e.g. mx.nd.ones).
     """
 
     def __init__(
             self,
-            model: SMILESEncoderDecoderABC,
+            model: SMILESLM,
             vocabulary: SMILESVocabulary,
             *,
             prefix: str = Token.BOS,
-            max_length: int = 80,
+            max_length: int = 100,
             temperature: float = 1.0,
-            state_initializer: Callable[..., mx.nd.NDArray] = mx.nd.zeros,
-            normalizer: Optional[Callable[..., mx.np.ndarray]] = None,
-            distribution: Optional[Callable[..., int]] = None,
     ):
-        normalizer = normalizer or _gumbel_trick
-
         super().__init__(
             model=model,
             vocabulary=vocabulary,
             prefix=prefix,
             max_length=max_length,
             temperature=temperature,
-            state_initializer=state_initializer,
-            normalizer=normalizer,
-            distribution=distribution,
+            normalizer=_gumbel_trick,
         )
