@@ -15,6 +15,10 @@ Classes:
         Calculate the rate of valid (theoretically realistic) molecules.
     RAC:
         Calculate the rate of unique acceptable compounds.
+    KLDivergence:
+        Calculate the Kullback-Leibler divergence of physicochemical descriptors.
+    InternalDiversity:
+        Calculate internal diversity using Tanimoto similarity.
 
     Perplexity:
         Re-implementation of mxnet.metrics.Perplexity, which supports Numpy
@@ -23,6 +27,7 @@ Classes:
 
 __all__ = (
     'CompositeMetric',
+    'InternalDiversity',
     'KLDivergence',
     'Metric',
     'Novelty',
@@ -42,9 +47,10 @@ import mxnet as mx
 import numpy as np
 import scipy.stats as stats
 from rdkit.Chem import MolFromSmiles
+from sklearn.pipeline import make_pipeline
 
 from ..description.base import check_compounds_valid
-from ..description.common import get_descriptor_df_from_mol
+from ..description.common import get_descriptor_df_from_mol, MoleculeTransformer
 from ..description.fingerprints import InternalTanimoto
 from ..description.physicochemical import PHYSCHEM_DESCRIPTOR_MAP
 
@@ -597,6 +603,33 @@ class KLDivergence(Metric):
             result *= len(molecules_valid) / len(predictions)
 
         return result, 1
+
+
+class InternalDiversity(Metric):
+    """Calculate internal diversity using Tanimoto similarity.
+
+    .. math::
+
+        IntDiv_p(V) = 1 - {\frac{1}{|V|^2} \sum_{v_1, v_2 \in V} T(v_1, v_2)}
+
+    References
+    ----------
+    .. [1] Mostapha Benhenda. ChemGAN challenge for drug discovery: can AI reproduce
+           natural chemical diversity?
+
+    ??? Should we sum and count only unique pairs (v_1, v_2)?
+    """
+
+    def _calculate(
+            self,
+            *,
+            predictions: Sequence[str],
+            unused_labels=None,
+            **kwargs
+    ) -> Tuple[Real, int]:
+        it = make_pipeline(MoleculeTransformer(), InternalTanimoto(dtype=np.float16))
+        sim_matrix = it.fit_transform(predictions)
+        return 1 - sim_matrix.sum() / (sim_matrix.shape[0]**2), 1
 
 
 class Perplexity(mx.metric.Perplexity):
