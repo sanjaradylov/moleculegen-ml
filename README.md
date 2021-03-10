@@ -2,7 +2,7 @@
 
 ![moleculegen](https://github.com/sanjaradylov/moleculegen-ml/workflows/moleculegen/badge.svg)
 [![release](https://img.shields.io/github/release/sanjaradylov/moleculegen-ml.svg)](https://github.com/sanjaradylov/moleculegen-ml/releases)
-[![PythonVersion](https://img.shields.io/badge/python-3.7-blue)](https://www.python.org/downloads/release/python-379/)
+[![PythonVersion](https://img.shields.io/badge/python-3.8-blue)](https://www.python.org/downloads/release/python-388/)
 [![issues](https://img.shields.io/github/issues/sanjaradylov/moleculegen-ml)](https://github.com/sanjaradylov/moleculegen-ml/issues)
 
 This project is an attempt to create a Python package for the complete *de novo* drug design
@@ -11,7 +11,7 @@ cycle similar to papers [Segler et al, Gupta et al, Brown et al.](#reference).
 In brief, the project comprises
 [two stages](https://github.com/sanjaradylov/moleculegen-ml/projects) of analysis.
 In [Stage 1](https://github.com/sanjaradylov/moleculegen-ml/projects/1), we train and evaluate
-a recurrent neural network on a large, general set of molecules to generate novel molecules.
+a neural language model on a large, general set of molecules to generate novel molecules.
 In [Stage 2](https://github.com/sanjaradylov/moleculegen-ml/projects/2), we choose specific
 targets of interest to create a predictive model, and then perform transfer learning on a
 focused set of active molecules.
