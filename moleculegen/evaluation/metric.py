@@ -496,6 +496,8 @@ class KLDivergence(Metric):
         training and validation sets.
     use_valid_ratio : bool, default=False
         Multiply the result by the ratio of valid molecules in the validation set.
+    dtype : str or numpy dtype, default='float32'
+        Descriptor and similarity matrix data types.
 
     References
     ----------
@@ -509,11 +511,13 @@ class KLDivergence(Metric):
             empty_value: Any = float('nan'),
             use_tanimoto_sim: bool = False,
             use_valid_ratio: bool = False,
+            dtype: str = 'float32',
     ):
         super().__init__(name=name, empty_value=empty_value)
 
         self._use_tanimoto_sim = use_tanimoto_sim
         self._use_valid_ratio = use_valid_ratio
+        self.dtype = dtype
 
     @staticmethod
     def calculate_for_continuous(data_train: np.array, data_valid: np.array) -> Real:
@@ -565,8 +569,8 @@ class KLDivergence(Metric):
         kl_divs = []
 
         for column in continuous_cols:
-            continuous_data_train = descriptors_train[column].values.astype(np.float16)
-            continuous_data_valid = descriptors_valid[column].values.astype(np.float16)
+            continuous_data_train = descriptors_train[column].values.astype(self.dtype)
+            continuous_data_valid = descriptors_valid[column].values.astype(self.dtype)
 
             try:
                 kl_div = self.calculate_for_continuous(
@@ -576,7 +580,7 @@ class KLDivergence(Metric):
                 return self.empty_value, 1
 
         if self._use_tanimoto_sim:
-            it = InternalTanimoto(dtype=np.float16)
+            it = InternalTanimoto(dtype=self.dtype)
             sim_train = it.fit_transform(molecules_train)
             sim_valid = it.fit_transform(molecules_valid)
             np.fill_diagonal(sim_train, 0.)
@@ -612,6 +616,15 @@ class InternalDiversity(Metric):
 
         IntDiv_p(V) = 1 - {\frac{1}{|V|^2} \sum_{v_1, v_2 \in V} T(v_1, v_2)}
 
+    Parameters
+    ----------
+    name : str, default=None
+        The name of a metric. Default is the name of the class.
+    empty_value : any, default=nan
+        The instance indicating that no metric evaluation was performed.
+    dtype : str or numpy dtype, default='float32'
+        Descriptor and similarity matrix data types.
+
     References
     ----------
     .. [1] Mostapha Benhenda. ChemGAN challenge for drug discovery: can AI reproduce
@@ -620,6 +633,16 @@ class InternalDiversity(Metric):
     ??? Should we sum and count only unique pairs (v_1, v_2)?
     """
 
+    def __init__(
+            self,
+            name: Optional[str] = None,
+            empty_value: Any = float('nan'),
+            dtype: str = 'float32',
+    ):
+        super().__init__(name=name, empty_value=empty_value)
+
+        self.dtype = dtype
+
     def _calculate(
             self,
             *,
@@ -627,7 +650,7 @@ class InternalDiversity(Metric):
             unused_labels=None,
             **kwargs
     ) -> Tuple[Real, int]:
-        it = make_pipeline(MoleculeTransformer(), InternalTanimoto(dtype=np.float16))
+        it = make_pipeline(MoleculeTransformer(), InternalTanimoto(dtype=self.dtype))
         sim_matrix = it.fit_transform(predictions)
         return 1 - sim_matrix.sum() / (sim_matrix.shape[0]**2), 1
 
