@@ -208,7 +208,7 @@ class RUACTestCase(unittest.TestCase):
 
 class KLDivergenceTestCase(unittest.TestCase):
     def setUp(self):
-        self.metric = KLDivergence()
+        self.metric = KLDivergence(use_tanimoto_sim=True, use_valid_ratio=True)
 
     def test_1_same_inputs(self):
         train = (

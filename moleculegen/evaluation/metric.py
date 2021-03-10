@@ -1,23 +1,24 @@
 """
 Additional metrics for model evaluation.
 
-Classes
--------
-CompositeMetric
-    Calculate a series of metrics on the same predictions and labels.
-Metric
-    A metric ABC for the comparison of training/validation and generated compounds.
-Novelty
-    Calculate the rate of compounds not presented in the training set.
-Perplexity
-    Re-implementation of mxnet.metrics.Perplexity, which supports Numpy
-    ndarray.
-RAC
-    Calculate the rate of unique acceptable compounds.
-Uniqueness
-    Calculate the rate of unique generated compounds.
-Validity
-    Calculate the rate of valid (theoretically realistic) molecules.
+Classes:
+    Metric:
+        A metric ABC for the comparison of training/validation and generated compounds.
+    CompositeMetric:
+        Calculate a series of metrics on the same predictions and labels.
+
+    Novelty:
+        Calculate the rate of compounds not presented in the training set.
+    Uniqueness:
+        Calculate the rate of unique generated compounds.
+    Validity:
+        Calculate the rate of valid (theoretically realistic) molecules.
+    RAC:
+        Calculate the rate of unique acceptable compounds.
+
+    Perplexity:
+        Re-implementation of mxnet.metrics.Perplexity, which supports Numpy
+        ndarray.
 """
 
 __all__ = (
@@ -53,9 +54,9 @@ class Metric(metaclass=abc.ABCMeta):
 
     Parameters
     ----------
-    name : str, default None
+    name : str, default=None
         The name of a metric. Default is the name of the class.
-    empty_value : any, default nan
+    empty_value : any, default=nan
         The instance indicating that no metric evaluation was performed.
     """
 
@@ -133,7 +134,7 @@ class CompositeMetric:
 
     Parameters
     ----------
-    metrics : tuple of Metric, default ()
+    metrics : tuple of Metric, default=()
         The metrics to evaluate.
         Instantiate a sequence of metrics during initialization
         (i.e. metrics = CompositeMetric(metric1, metric2, ..., metricN),
@@ -149,14 +150,6 @@ class CompositeMetric:
     def __getitem__(self, index: int) -> Metric:
         """Return the metric with index `index`.
 
-        Parameters
-        ----------
-        index : int
-
-        Returns
-        -------
-        metric : Metric
-
         Raises
         ------
         IndexError
@@ -170,11 +163,6 @@ class CompositeMetric:
 
     def __setitem__(self, index: int, metric: Metric):
         """Insert `metric` in position `index`.
-
-        Parameters
-        ----------
-        index : int
-        metric : Metric
 
         Raises
         ------
@@ -194,10 +182,6 @@ class CompositeMetric:
     def __delitem__(self, index: int):
         """Delete the metric in position `key`.
 
-        Parameters
-        ----------
-        index : int
-
         Raises
         ------
         IndexError
@@ -211,42 +195,21 @@ class CompositeMetric:
 
     def __len__(self) -> int:
         """Return the number of metrics in the sequence.
-
-        Returns
-        -------
-        int
         """
         return len(self._metrics)
 
     def __contains__(self, metric: Metric) -> bool:
         """Check if `metric` is in the sequence.
-
-        Parameters
-        ----------
-        metric : Metric
-
-        Returns
-        -------
-        bool
         """
         return metric in self._metrics
 
     def __iter__(self) -> Iterator[Metric]:
         """Iterate over the metrics in the sequence.
-
-        Yields
-        ------
-        metric : Metric
         """
         return iter(self._metrics)
 
     def insert(self, index: int, metric: Metric):
         """Insert `metric` in position `index`.
-
-        Parameters
-        ----------
-        index : int
-        metric : Metric
 
         Raises
         ------
@@ -281,11 +244,6 @@ class CompositeMetric:
 
     def add(self, metric, *metrics):
         """Append metric(s) to the sequence.
-
-        Parameters
-        ----------
-        metric : Metric
-        metrics : tuple of Metric, default ()
 
         Raises
         ------
@@ -322,7 +280,7 @@ class CompositeMetric:
         ----------
         predictions : sequence of str
             The generated SMILES strings.
-        labels : sequence of str, default None
+        labels : sequence of str, default=None
             The labels (usually, training set) to compare the predictions with.
             Metrics like `Novelty` require this parameter, while for `RAC` this is
             optional.
@@ -445,11 +403,11 @@ class RAC(Metric):
 
     Parameters
     ----------
-    name : str, default None
+    name : str, default=None
         The name of a metric. Default is the name of the class.
-    empty_value : any, default nan
+    empty_value : any, default=nan
         The instance indicating that no metric evaluation was performed.
-    count_unique : bool, default False
+    count_unique : bool, default=False
         Whether to count similar compounds.
 
     Attributes
@@ -483,7 +441,7 @@ class RAC(Metric):
         ----------
         predictions : sequence of str
             The generated SMILES strings.
-        labels : sequence of str, default None
+        labels : sequence of str, default=None
             If not None, do not count the compounds from this container.
 
         Returns
@@ -521,11 +479,35 @@ class RAC(Metric):
 class KLDivergence(Metric):
     r"""Calculate the Kullback-Leibler divergence of physicochemical descriptors.
 
+    Parameters
+    ----------
+    name : str, default=None
+        The name of a metric. Default is the name of the class.
+    empty_value : any, default=nan
+        The instance indicating that no metric evaluation was performed.
+    use_tanimoto_sim : bool, default=False
+        Calculate the KL divergence of internal Tanimoto similarity distances of both
+        training and validation sets.
+    use_valid_ratio : bool, default=False
+        Multiply the result by the ratio of valid molecules in the validation set.
+
     References
     ----------
     .. [1] Brown et al. Guacamol: Benchmarking Models for de Novo Molecular Design.
        J. Chem. Inf. Model. 2019, 59, 1096−1108
     """
+
+    def __init__(
+            self,
+            name: Optional[str] = None,
+            empty_value: Any = float('nan'),
+            use_tanimoto_sim: bool = False,
+            use_valid_ratio: bool = False,
+    ):
+        super().__init__(name=name, empty_value=empty_value)
+
+        self._use_tanimoto_sim = use_tanimoto_sim
+        self._use_valid_ratio = use_valid_ratio
 
     @staticmethod
     def calculate_for_continuous(data_train: np.array, data_valid: np.array) -> Real:
@@ -587,19 +569,20 @@ class KLDivergence(Metric):
             except np.linalg.LinAlgError:
                 return self.empty_value, 1
 
-        it = InternalTanimoto(dtype=np.float16)
-        sim_train = it.fit_transform(molecules_train)
-        sim_valid = it.fit_transform(molecules_valid)
-        np.fill_diagonal(sim_train, 0.)
-        np.fill_diagonal(sim_valid, 0.)
-        sim_train = sim_train.max(axis=1)
-        sim_valid = sim_valid.max(axis=1)
+        if self._use_tanimoto_sim:
+            it = InternalTanimoto(dtype=np.float16)
+            sim_train = it.fit_transform(molecules_train)
+            sim_valid = it.fit_transform(molecules_valid)
+            np.fill_diagonal(sim_train, 0.)
+            np.fill_diagonal(sim_valid, 0.)
+            sim_train = sim_train.max(axis=1)
+            sim_valid = sim_valid.max(axis=1)
 
-        try:
-            kl_div = self.calculate_for_continuous(sim_train, sim_valid)
-            kl_divs.append(kl_div)
-        except np.linalg.LinAlgError:
-            return self.empty_value, 1
+            try:
+                kl_div = self.calculate_for_continuous(sim_train, sim_valid)
+                kl_divs.append(kl_div)
+            except np.linalg.LinAlgError:
+                return self.empty_value, 1
 
         for column in discrete_cols:
             discrete_data_train = descriptors_train[column].values.astype(np.int32)
@@ -609,8 +592,10 @@ class KLDivergence(Metric):
                 discrete_data_train, discrete_data_valid)
             kl_divs.append(kl_div)
 
-        valid_ratio = len(molecules_valid) / len(predictions)
-        result = valid_ratio * np.mean([np.exp(-kl_div) for kl_div in kl_divs])
+        result = np.mean([np.exp(-kl_div) for kl_div in kl_divs])
+        if self._use_valid_ratio:
+            result *= len(molecules_valid) / len(predictions)
+
         return result, 1
 
 
