@@ -77,6 +77,17 @@ class SoftmaxSearchTestCase(unittest.TestCase):
         for prob in probabilities:
             self.assertAlmostEqual(prob, expected_prob, 2)
 
+    def test_2_strategy_p(self):
+        with self.assertRaises(ValueError):
+            self.predictor.strategy = 2.5  # must be in (0., 1.]
+
+        y = mx.np.array([0.2, 0.22, 0.08, 0.1, 0.15, 0.02, 0.015, 0.004, 0.18, 0.031])
+        self.predictor.strategy = 0.9
+        top_p_idx = (0, 1, 8, 4, 3)
+
+        for _ in range(10):
+            self.assertIn(self.predictor.distribution(y), top_p_idx)
+
     def tearDown(self):
         self.fh.close()
 
