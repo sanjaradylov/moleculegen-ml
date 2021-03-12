@@ -231,6 +231,23 @@ def _multinomial(probabilities: mx.np.ndarray) -> int:
     return mx.random.multinomial(probabilities.as_nd_ndarray()).asscalar()
 
 
+def _p_multinomial(probabilities: mx.np.ndarray, p: float) -> int:
+    nd_prob = probabilities.as_nd_ndarray()
+    sorted_idx = mx.nd.argsort(nd_prob, is_ascend=False, dtype=int)
+    cumsum = mx.nd.cumsum(nd_prob[sorted_idx])
+    top_idx = sorted_idx[cumsum <= p]
+    top_p = nd_prob[top_idx]
+    top = _multinomial(top_p / top_p.sum())
+    return top_idx[top].asscalar()
+
+
+def _get_multinomial(strategy: Optional[float]) -> Callable[..., int]:
+    if strategy is None:
+        return _multinomial
+    elif isinstance(strategy, float):
+        return functools.partial(_p_multinomial, p=strategy)
+
+
 # noinspection PyUnresolvedReferences
 _numpy_softmax = mx.npx.softmax
 
@@ -251,6 +268,10 @@ class SoftmaxSearch(BaseSearch):
         The maximum number of tokens in the SMILES string being generated.
     temperature : float, default=1.0
         A sensitivity parameter.
+    strategy : float, default=None
+        If None, sample from multinomial.
+        If float, sample from probabilities >= `strategy`; if all
+            probabilities < `strategy`, sample from multinomial.
     """
     def __init__(
             self,
@@ -262,9 +283,10 @@ class SoftmaxSearch(BaseSearch):
             temperature: float = 1.0,
             normalizer: Optional[Callable[..., mx.np.ndarray]] = None,
             distribution: Optional[Callable[..., int]] = None,
+            strategy: Optional[float] = None,
     ):
         normalizer = normalizer or _numpy_softmax
-        distribution = distribution or _multinomial
+        distribution = distribution or _get_multinomial(strategy)
 
         super().__init__(
             model=model,
@@ -276,6 +298,7 @@ class SoftmaxSearch(BaseSearch):
         )
 
         self.temperature = temperature
+        self.strategy = strategy
 
     @property
     def temperature(self) -> float:
@@ -296,11 +319,30 @@ class SoftmaxSearch(BaseSearch):
         ValueError
             If `temperature` <= 0.
         """
-        if temperature <= 0:
-            raise ValueError('temperature must be greater than zero')
+        if not isinstance(temperature, (int, float)) or temperature <= 0:
+            raise ValueError(
+                f'`temperature` must be a number greater than zero, not {temperature!r}.'
+            )
 
         self._normalizer = functools.partial(self._normalizer, temperature=temperature)
         self.__temperature = temperature
+
+    @property
+    def strategy(self) -> Optional[float]:
+        return self.__strategy
+
+    @strategy.setter
+    def strategy(self, strategy: Optional[float]):
+        if isinstance(strategy, float):
+            if not (0. < strategy <= 1.):
+                raise ValueError(f'`strategy` must be in (0., 1.], not {strategy!r}.')
+        elif strategy is not None:
+            raise ValueError(
+                f'`strategy` must be None or float, not {type(strategy)}.'
+            )
+
+        self._distribution = _get_multinomial(strategy)
+        self.__strategy = strategy
 
 
 def _gumbel_trick(logits: mx.np.ndarray, temperature: float) -> mx.np.ndarray:
@@ -327,6 +369,10 @@ class GumbelSoftmaxSearch(SoftmaxSearch):
         The maximum number of tokens in the SMILES string being generated.
     temperature : float, default=1.0
         A sensitivity parameter.
+    strategy : float, default=None
+        If None, sample from multinomial.
+        If float, sample from probabilities >= `strategy`; if all
+            probabilities < `strategy`, sample from multinomial.
     """
 
     def __init__(
@@ -337,6 +383,7 @@ class GumbelSoftmaxSearch(SoftmaxSearch):
             prefix: str = Token.BOS,
             max_length: int = 100,
             temperature: float = 1.0,
+            strategy: Optional[float] = None,
     ):
         super().__init__(
             model=model,
@@ -345,4 +392,5 @@ class GumbelSoftmaxSearch(SoftmaxSearch):
             max_length=max_length,
             temperature=temperature,
             normalizer=_gumbel_trick,
+            strategy=strategy,
         )
