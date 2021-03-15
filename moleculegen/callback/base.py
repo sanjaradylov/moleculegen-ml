@@ -1,12 +1,11 @@
 """
 Build new callbacks inheriting from Callback ABC.
 
-Classes
--------
-Callback
-    An ABC to build callbacks.
-CallbackList
-    Perform callbacks sequentially and log output messages.
+Classes:
+    Callback:
+        An ABC to build callbacks.
+    CallbackList:
+        Perform callbacks sequentially and log output messages.
 """
 
 __all__ = (
@@ -21,6 +20,7 @@ import datetime
 import functools
 import io
 import itertools
+import math
 import sys
 import time
 from typing import Any, Callable, List, Optional, TextIO
@@ -284,9 +284,9 @@ class CallbackList:
 
     def _log_train_time(self):
         if self._log_handler is not None or self._verbose:
-            end_time = time.time() - self._begin_time
+            end_time = math.ceil(time.time() - self._begin_time)
 
             stdout = sys.stdout if self._verbose else None
             handlers = [h for h in (self._log_handler, stdout) if h is not None]
             for handler in handlers:
-                handler.write(f'Time: {datetime.timedelta(seconds=end_time)}')
+                handler.write(f'Time: {datetime.timedelta(seconds=end_time)}.\n')

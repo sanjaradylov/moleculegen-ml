@@ -1,21 +1,21 @@
 """
 The collection of callbacks.
 
-Classes
--------
-BatchMetricScorer
-    Calculate and log metrics after batch sampling and forward computation.
-EarlyStopping
-    Stop training when a monitored evaluation function has stopped improving.
-EpochMetricScorer
-    Calculate and log metrics at the end of every epoch.
-Generator
-    Generate, save, and optionally evaluate new compounds.
-PhysChemDescriptorPlotter
-    Project physicochemical descriptors of training and validation data into 2D using
-    sklearn-compatible transformers (e.g. `TSNE` or `PCA`) and plot every chosen epoch.
-ProgressBar
-    Print progress bar every epoch of model training.
+Classes:
+    BatchMetricScorer:
+        Calculate and log metrics after batch sampling and forward computation.
+    EarlyStopping:
+        Stop training when a monitored evaluation function has stopped improving.
+    EpochMetricScorer:
+        Calculate and log metrics at the end of every epoch.
+    Generator:
+        Generate, save, and optionally evaluate new compounds.
+    PhysChemDescriptorPlotter:
+        Project physicochemical descriptors of training and validation data into 2D using
+        sklearn-compatible transformers (e.g. `TSNE` or `PCA`) and plot every chosen
+        epoch.
+    ProgressBar:
+        Print progress bar every epoch of model training.
 """
 
 __all__ = (
@@ -96,17 +96,16 @@ class EpochMetricScorer(Callback):
 
     Parameters
     ----------
-    metrics : CompositeMetric or sequence of Metric
+    metrics : moleculegen.evaluation.CompositeMetric
+            or sequence of moleculegen.evaluation.Metric
         The metrics to calculate at the end of an epoch on a set of generated
-        compounds (e.g. RAC).
-    predictor : BaseSearch
+        compounds (e.g. moleculegen.evaluation.RAC).
+    predictor : moleculegen.generation.BaseSearch
         A SMILES string predictor.
-    n_predictions : int, default 1000
+    n_predictions : int, default=1000
         The number of SMILES strings to generate.
-    train_dataset : sequence of str, default None
+    train_dataset : sequence of str, default=None
         A dataset to compare the generated compounds with.
-
-    # TODO Multiprocessing for both CPU and GPU.
     """
 
     def __init__(
@@ -170,11 +169,11 @@ class EarlyStopping(Callback):
 
     Parameters
     ----------
-    min_delta : float, default 0.0
+    min_delta : float, default=0.0
         An absolute change higher than `min_delta` will count as improvement.
-    patience : int, default 0
+    patience : int, default=0
         If no improvement takes place after `patience` epochs, stop training.
-    restore_best_weights : bool, default False
+    restore_best_weights : bool, default=False
         Whether to restore the parameters from the epoch with the best `monitor` value.
     """
 
@@ -285,15 +284,15 @@ class ProgressBar(Callback):
 
     Parameters
     ----------
-    length : int, default 30
+    length : int, default=30
         The length of a progress bar (without logs).
-    left_border : str, default '['
+    left_border : str, default='['
         The left border of a progress bar.
-    right_border : str, default ']'
+    right_border : str, default=']'
         The right border of a progress bar.
-    done_char : str, default '✓'
+    done_char : str, default='✓'
         The character inside a progress bar that indicates the jobs done.
-    wait_char : str, default '✗'
+    wait_char : str, default='✗'
         The character inside a progress bar that indicates the jobs waiting.
     """
 
@@ -455,17 +454,17 @@ class Generator(Callback):
         The name of a file to save predictions. If `epoch` is None, then the full file
         name will be `filename.csv`. Otherwise, every file will have the name
         `filename_epoch_{epoch}.csv`.
-    predictor : BaseSearch
+    predictor : moleculegen.generation.BaseSearch
         A SMILES string predictor.
-    n_predictions : int, default 1000
+    n_predictions : int, default=1000
         The number of compounds to generate.
-    epoch : int, default None
+    epoch : int, default=None
         Generate every `epoch` epoch.
         If None, generate only after full training.
-    on_interrupt : bool, default False
+    on_interrupt : bool, default=False
         Generate on keyboard interrupt
         (e.g. manual keyboard interrupt or early stopping).
-    kwargs : dict, str -> any, default None
+    kwargs : dict, str -> any, default=None
         Additional key-word arguments for `metric`.
     """
 
@@ -493,7 +492,7 @@ class Generator(Callback):
 
         Parameters
         ----------
-        epoch : int, default None
+        epoch : int, default=None
         """
         def generate() -> str:
             """Generate one SMILES string and save.
