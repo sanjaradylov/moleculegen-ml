@@ -241,11 +241,21 @@ def _p_multinomial(probabilities: mx.np.ndarray, p: float) -> int:
     return top_idx[top].asscalar()
 
 
+def _k_multinomial(probabilities: mx.np.ndarray, k: int) -> int:
+    nd_prob = probabilities.as_nd_ndarray()
+    top_k = mx.nd.topk(nd_prob, k=k, dtype=int)
+    top_k_prob = nd_prob[top_k]
+    top = _multinomial(top_k_prob / top_k_prob.sum())
+    return top_k[top].asscalar()
+
+
 def _get_multinomial(strategy: Optional[float]) -> Callable[..., int]:
     if strategy is None:
         return _multinomial
     elif isinstance(strategy, float):
         return functools.partial(_p_multinomial, p=strategy)
+    elif isinstance(strategy, int):
+        return functools.partial(_k_multinomial, k=strategy)
 
 
 # noinspection PyUnresolvedReferences
@@ -253,8 +263,8 @@ _numpy_softmax = mx.npx.softmax
 
 
 class SoftmaxSearch(BaseSearch):
-    """Softmax with a sensitivity parameter followed by sampling from multinomial
-    distribution.
+    """Softmax with a sensitivity parameter followed by
+    multinomial distribution/top-p/top-k sampling.
 
     Parameters
     ----------
@@ -268,10 +278,10 @@ class SoftmaxSearch(BaseSearch):
         The maximum number of tokens in the SMILES string being generated.
     temperature : float, default=1.0
         A sensitivity parameter.
-    strategy : float, default=None
+    strategy : float or int, default=None
         If None, sample from multinomial.
-        If float, sample from probabilities >= `strategy`; if all
-            probabilities < `strategy`, sample from multinomial.
+        If float, top-p (nucleus) sampling.
+        If int, top-k sampling.
     """
     def __init__(
             self,
@@ -336,8 +346,11 @@ class SoftmaxSearch(BaseSearch):
         if isinstance(strategy, float):
             if not (0. < strategy <= 1.):
                 raise ValueError(f'`strategy` must be in (0., 1.], not {strategy!r}.')
+        elif isinstance(strategy, int):
+            if strategy <= 0:
+                raise ValueError(f'`strategy` must be greater than 0, not {strategy!r}.')
         elif strategy is not None:
-            raise ValueError(
+            raise TypeError(
                 f'`strategy` must be None or float, not {type(strategy)}.'
             )
 
@@ -369,10 +382,10 @@ class GumbelSoftmaxSearch(SoftmaxSearch):
         The maximum number of tokens in the SMILES string being generated.
     temperature : float, default=1.0
         A sensitivity parameter.
-    strategy : float, default=None
+    strategy : float or int, default=None
         If None, sample from multinomial.
-        If float, sample from probabilities >= `strategy`; if all
-            probabilities < `strategy`, sample from multinomial.
+        If float, top-p (nucleus) sampling.
+        If int, top-k sampling.
     """
 
     def __init__(
