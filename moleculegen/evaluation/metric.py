@@ -19,6 +19,8 @@ Classes:
         Calculate the Kullback-Leibler divergence of physicochemical descriptors.
     InternalDiversity:
         Calculate internal diversity using Tanimoto similarity.
+    NearestNeighborSimilarity:
+        Calculate nearest neighbor Tanimoto similarity.
 
     Perplexity:
         Re-implementation of mxnet.metrics.Perplexity, which supports Numpy
@@ -30,6 +32,7 @@ __all__ = (
     'InternalDiversity',
     'KLDivergence',
     'Metric',
+    'NearestNeighborSimilarity',
     'Novelty',
     'Perplexity',
     'RAC',
@@ -47,11 +50,12 @@ import mxnet as mx
 import numpy as np
 import scipy.stats as stats
 from rdkit.Chem import MolFromSmiles
+from rdkit.DataStructs import BulkTanimotoSimilarity
 from sklearn.pipeline import make_pipeline
 
 from ..description.base import check_compounds_valid
 from ..description.common import get_descriptor_df_from_mol, MoleculeTransformer
-from ..description.fingerprints import InternalTanimoto
+from ..description.fingerprints import InternalTanimoto, MorganFingerprint
 from ..description.physicochemical import PHYSCHEM_DESCRIPTOR_MAP
 
 
@@ -653,6 +657,70 @@ class InternalDiversity(Metric):
         it = make_pipeline(MoleculeTransformer(), InternalTanimoto(dtype=self.dtype))
         sim_matrix = it.fit_transform(predictions)
         return 1 - sim_matrix.sum() / (sim_matrix.shape[0]**2), 1
+
+
+class NearestNeighborSimilarity(Metric):
+    """Calculate nearest neighbor Tanimoto similarity.
+
+    .. math::
+
+        SNN(S, V) = {\frac{1}{|S|} \sum_{v \in V} \max_{s \in S} T(v, s)}
+
+    Parameters
+    ----------
+    radius : int, default=2
+        The radius of fingerprints.
+    n_bits : int, default=1024
+        The number of bits of fingerprints.
+    name : str, default=None
+        The name of a metric. Default is the name of the class.
+    empty_value : any, default=nan
+        The instance indicating that no metric evaluation was performed.
+
+    References
+    ----------
+    .. [1] Polykovsiy et al. Molecular Sets (MOSES): A Benchmarking Platform
+           for Molecular Generation Models
+    """
+
+    def __init__(
+            self,
+            radius: int = 2,
+            n_bits: int = 1024,
+            name: Optional[str] = 'SNN',
+            empty_value: Any = float('nan'),
+    ):
+        super().__init__(name=name, empty_value=empty_value)
+
+        self._radius = radius
+        self._n_bits = n_bits
+
+    def _calculate(
+            self,
+            *,
+            predictions: Sequence[str],
+            labels: Sequence[str],
+            **kwargs
+    ) -> Tuple[Real, int]:
+        pipe = make_pipeline(
+            MoleculeTransformer(invalid='raise'),
+            MorganFingerprint(
+                radius=self._radius,
+                n_bits=self._n_bits,
+                return_type='bitvect_list',
+            ),
+        )
+        label_fingerprints = pipe.fit_transform(labels)
+
+        pipe[0].invalid = 'skip'
+        prediction_fingerprints = pipe.fit_transform(predictions)
+
+        total: List[float] = [
+            max(BulkTanimotoSimilarity(fingerprint, label_fingerprints))
+            for fingerprint in prediction_fingerprints
+        ]
+
+        return np.mean(total), 1
 
 
 class Perplexity(mx.metric.Perplexity):

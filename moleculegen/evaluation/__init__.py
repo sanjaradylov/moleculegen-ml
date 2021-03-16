@@ -22,6 +22,8 @@ Classes:
         Calculate the Kullback-Leibler divergence of physicochemical descriptors.
     InternalDiversity:
         Calculate internal diversity using Tanimoto similarity.
+    NearestNeighborSimilarity:
+        Calculate nearest neighbor Tanimoto similarity.
 
     Perplexity:
         Re-implementation of mxnet.metrics.Perplexity, which supports Numpy
@@ -38,6 +40,7 @@ __all__ = (
     'KLDivergence',
     'MaskedSoftmaxCELoss',
     'Metric',
+    'NearestNeighborSimilarity',
     'Novelty',
     'Perplexity',
     'RAC',
@@ -55,6 +58,7 @@ from .metric import (
     InternalDiversity,
     KLDivergence,
     Metric,
+    NearestNeighborSimilarity,
     Novelty,
     Perplexity,
     RAC,
