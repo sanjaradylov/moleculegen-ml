@@ -618,16 +618,20 @@ class InternalDiversity(Metric):
 
     .. math::
 
-        IntDiv_p(V) = 1 - {\frac{1}{|V|^2} \sum_{v_1, v_2 \in V} T(v_1, v_2)}
+        IntDiv(V) = 1 - {\frac{1}{|V|^2} \sum_{v_1, v_2 \in V} T(v_1, v_2)}
 
     Parameters
     ----------
-    name : str, default=None
+    radius : int, default=2
+        The radius of fingerprints.
+    n_bits : int, default=1024
+        The number of bits of fingerprints.
+    dtype : str or numpy dtype, default='float32'
+        Descriptor and similarity matrix data types.
+    name : str, default='IntDiv'
         The name of a metric. Default is the name of the class.
     empty_value : any, default=nan
         The instance indicating that no metric evaluation was performed.
-    dtype : str or numpy dtype, default='float32'
-        Descriptor and similarity matrix data types.
 
     References
     ----------
@@ -639,13 +643,22 @@ class InternalDiversity(Metric):
 
     def __init__(
             self,
-            name: Optional[str] = None,
-            empty_value: Any = float('nan'),
+            radius: int = 2,
+            n_bits: int = 1024,
             dtype: str = 'float32',
+            name: Optional[str] = 'IndDiv',
+            empty_value: Any = float('nan'),
     ):
         super().__init__(name=name, empty_value=empty_value)
 
-        self.dtype = dtype
+        self.pipe = make_pipeline(
+            MoleculeTransformer(),
+            InternalTanimoto(
+                radius=radius,
+                n_bits=n_bits,
+                dtype=dtype,
+            ),
+        )
 
     def _calculate(
             self,
@@ -654,8 +667,7 @@ class InternalDiversity(Metric):
             unused_labels=None,
             **kwargs
     ) -> Tuple[Real, int]:
-        it = make_pipeline(MoleculeTransformer(), InternalTanimoto(dtype=self.dtype))
-        sim_matrix = it.fit_transform(predictions)
+        sim_matrix = self.pipe.fit_transform(predictions)
         return 1 - sim_matrix.sum() / (sim_matrix.shape[0]**2), 1
 
 
