@@ -12,6 +12,7 @@ from moleculegen.evaluation import (
     InternalDiversity,
     KLDivergence,
     MaskedSoftmaxCELoss,
+    NearestNeighborSimilarity,
     Novelty,
     Perplexity,
     RAC,
@@ -239,6 +240,19 @@ class InternalDiversityTestCase(unittest.TestCase):
     def test_2_diverse_data(self):
         self.metric.update(predictions=('CCO', 'C#N', 'N#N', 'CN=C=O', 'CCOC(=O)'))
         self.assertGreater(self.metric.get()[1], 0.75)
+
+
+class NearestNeighborSimilarityTestCase(unittest.TestCase):
+    def setUp(self):
+        self.metric = NearestNeighborSimilarity(radius=2, n_bits=1024)
+
+    def test_1(self):
+        predictions = ['CCOC(=O)', 'CCOC']
+        labels = ['CCO', 'N#N', 'C#N']
+        self.metric.update(predictions=predictions, labels=labels)
+        name, result = self.metric.get()
+
+        self.assertLess(result, 0.24)
 
 
 class PerplexityTestCase(unittest.TestCase):
