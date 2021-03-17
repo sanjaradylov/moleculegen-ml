@@ -490,6 +490,9 @@ class SMILESConsecutiveSampler(mx.gluon.data.Sampler):
         If None, it equals to the maximum string length in the corpus minus 1.
     shuffle : bool, default=True
         Whether to shuffle the corpus before sampling.
+    max_offset : int, default=0
+        If > 0, for every token list from `corpus`, randomly choose starting position in
+        [0, `max_offset`].
 
     Examples
     --------
@@ -531,10 +534,12 @@ class SMILESConsecutiveSampler(mx.gluon.data.Sampler):
             corpus: List[List[int]],
             n_steps: Optional[int] = None,
             shuffle: bool = True,
+            max_offset: int = 0,
     ):
         self._corpus = corpus
         self._shuffle = shuffle
         self._n_steps = n_steps or max(map(len, self._corpus))
+        self._max_offset = max_offset
 
         self._n_samples: Optional[int] = None
 
@@ -563,10 +568,15 @@ class SMILESConsecutiveSampler(mx.gluon.data.Sampler):
         if self._shuffle:
             random.shuffle(self._corpus)
 
+        if self._max_offset > 0:
+            corpus = (x[random.randint(0, self._max_offset):] for x in self._corpus)
+        else:
+            corpus = self._corpus
+
         self._n_samples = 0
 
         # Iterate over the corpus of SMILES token indices.
-        for tokens in self._corpus:
+        for tokens in corpus:
             step_i = 0  # Starting index of a subsequence.
             step_len = step_i + self._n_steps  # Ending index.
 
