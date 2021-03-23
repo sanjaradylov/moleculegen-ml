@@ -232,13 +232,15 @@ def _multinomial(probabilities: mx.np.ndarray) -> int:
 
 
 def _p_multinomial(probabilities: mx.np.ndarray, p: float) -> int:
-    nd_prob = probabilities.as_nd_ndarray()
-    sorted_idx = mx.nd.argsort(nd_prob, is_ascend=False, dtype=int)
-    cumsum = mx.nd.cumsum(nd_prob[sorted_idx])
-    top_idx = sorted_idx[cumsum <= p]
-    top_p = nd_prob[top_idx]
-    top = _multinomial(top_p / top_p.sum())
-    return top_idx[top].asscalar()
+    sorted_idx = mx.np.argsort(probabilities)[::-1]
+    # noinspection PyUnresolvedReferences
+    cum_sum = mx.np.cumsum(probabilities[sorted_idx])
+    remove_mask = cum_sum > p
+    remove_mask[1:][:] = remove_mask[:-1]
+    select_mask = ~remove_mask
+    probabilities[sorted_idx[remove_mask]] = 0.
+    top_p = probabilities[sorted_idx[select_mask]]
+    return _multinomial(probabilities / top_p.sum())
 
 
 def _k_multinomial(probabilities: mx.np.ndarray, k: int) -> int:
@@ -282,6 +284,10 @@ class SoftmaxSearch(BaseSearch):
         If None, sample from multinomial.
         If float, top-p (nucleus) sampling.
         If int, top-k sampling.
+
+    References
+    ----------
+    .. [1] A. Holtzman et al. The Curious Case of Neural Text Degeneration.
     """
     def __init__(
             self,
@@ -386,6 +392,10 @@ class GumbelSoftmaxSearch(SoftmaxSearch):
         If None, sample from multinomial.
         If float, top-p (nucleus) sampling.
         If int, top-k sampling.
+
+    References
+    ----------
+    .. [1] A. Holtzman et al. The Curious Case of Neural Text Degeneration.
     """
 
     def __init__(
