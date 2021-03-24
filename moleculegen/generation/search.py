@@ -237,6 +237,8 @@ def _p_multinomial(probabilities: mx.np.ndarray, p: float) -> int:
     cum_sum = mx.np.cumsum(probabilities[sorted_idx])
     remove_mask = cum_sum > p
     remove_mask[1:][:] = remove_mask[:-1]
+    if remove_mask.all():
+        return sorted_idx[0].item()
     select_mask = ~remove_mask
     probabilities[sorted_idx[remove_mask]] = 0.
     top_p = probabilities[sorted_idx[select_mask]]
