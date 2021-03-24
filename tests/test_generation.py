@@ -83,9 +83,9 @@ class SoftmaxSearchTestCase(unittest.TestCase):
 
         y = mx.np.array([0.2, 0.22, 0.08, 0.1, 0.15, 0.02, 0.015, 0.004, 0.18, 0.031])
         self.predictor.strategy = 0.9
-        top_p_idx = (0, 1, 8, 4, 3)
+        top_p_idx = (0, 1, 8, 4, 3, 2)
 
-        for _ in range(10):
+        for _ in range(1_000):
             self.assertIn(self.predictor.distribution(y), top_p_idx)
 
     def test_3_strategy_k(self):
@@ -96,7 +96,7 @@ class SoftmaxSearchTestCase(unittest.TestCase):
         self.predictor.strategy = 3
         top_k_idx = (1, 2, 3)
 
-        for _ in range(10):
+        for _ in range(1_000):
             self.assertIn(self.predictor.distribution(y), top_k_idx)
 
     def tearDown(self):
