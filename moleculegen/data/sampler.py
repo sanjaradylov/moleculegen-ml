@@ -536,6 +536,10 @@ class SMILESConsecutiveSampler(mx.gluon.data.Sampler):
             shuffle: bool = True,
             max_offset: int = 0,
     ):
+        assert max_offset == 0 or max_offset + 2 <= min(map(len, corpus)), \
+            "`max_offset` is greater than one of the sequences in `corpus` and " \
+            "does not save at least one token each for input and output"
+
         self._corpus = corpus
         self._shuffle = shuffle
         self._n_steps = n_steps or max(map(len, self._corpus))
