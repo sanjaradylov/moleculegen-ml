@@ -157,6 +157,12 @@ class CompositeMetric:
         if metrics:
             self.add(*metrics)
 
+    def __repr__(self) -> str:
+        repr_str = f'{self.__class__.__name__}(\n\t'
+        repr_str += ',\n\t'.join(map(repr, self._metrics))
+        repr_str += ',\n)'
+        return repr_str
+
     def __getitem__(self, index: int) -> Metric:
         """Return the metric with index `index`.
 
@@ -646,7 +652,7 @@ class InternalDiversity(Metric):
             radius: int = 2,
             n_bits: int = 1024,
             dtype: str = 'float32',
-            name: Optional[str] = 'IndDiv',
+            name: Optional[str] = 'IntDiv',
             empty_value: Any = float('nan'),
     ):
         super().__init__(name=name, empty_value=empty_value)

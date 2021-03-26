@@ -41,7 +41,7 @@ import mxnet as mx
 from .base import Callback
 from ..description.base import get_descriptors_df
 from ..description.physicochemical import PHYSCHEM_DESCRIPTOR_MAP
-from ..evaluation.metric import CompositeMetric, KLDivergence, Metric
+from ..evaluation.metric import CompositeMetric, Metric
 from ..generation.search import BaseSearch
 
 
@@ -116,18 +116,46 @@ class EpochMetricScorer(Callback):
             train_dataset: Optional[Sequence[str]] = None,
     ):
         if not isinstance(metrics, CompositeMetric):
-            self.__metrics = CompositeMetric(*metrics)
+            self._metrics = CompositeMetric(*metrics)
         else:
-            self.__metrics = metrics
+            self._metrics = metrics
 
-        self.__predictor = predictor
-        self.__n_predictions = n_predictions
-        self.__train_dataset = train_dataset
+        self._predictor = predictor
+        self._n_predictions = n_predictions
+        self._train_dataset = train_dataset
+
+        # `KLDivergence` `NearestNeighborSimilarity`, and `InternalDiversity`
+        # do not support evaluating one single prediction;
+        # if it's present in metrics, we will first generate `self._n_predictions`
+        # strings and evaluate, otherwise, we generate and evaluate one string at a
+        # time to save space.
+        # ??? Maybe create a separate `Metric` abstract base subclass for the metrics
+        #     that cannot be accumulated?
+        from ..evaluation import (
+            KLDivergence, NearestNeighborSimilarity, InternalDiversity)
+
+        no_acc_metrics = (KLDivergence, NearestNeighborSimilarity, InternalDiversity)
+
+        for metric in self._metrics:
+            if isinstance(metric, no_acc_metrics):
+                self._update = self._update_multiple
+                break
+        else:
+            self._update = self._update_one
+
+    def _update_one(self):
+        for _ in range(self._n_predictions):
+            smiles = self._predictor()
+            self._metrics.update(predictions=[smiles], labels=self._train_dataset)
+
+    def _update_multiple(self):
+        predictions = tuple(self._predictor() for _ in range(self._n_predictions))
+        self._metrics.update(predictions=predictions, labels=self._train_dataset)
 
     def on_epoch_begin(self, **fit_kwargs):
         """Initialize/Reset internal states of the metrics.
         """
-        self.__metrics.reset()
+        self._metrics.reset()
 
     def on_epoch_end(self, **fit_kwargs):
         """Score and log every metric.
@@ -137,29 +165,10 @@ class EpochMetricScorer(Callback):
         Expected named arguments:
             - model
         """
-        # `KLDivergence` does not support evaluating one single prediction;
-        # if it's present in metrics, we will first generate `self.__n_predictions`
-        # strings and evaluate, otherwise, we generate and evaluate one string at a
-        # time to save space.
-        # ??? Maybe create a separate `Metric` abstract base subclass for the metrics
-        #     that cannot be accumulated?
-        has_kl_divergence = False
-        for metric in self.__metrics:
-            if isinstance(metric, KLDivergence):
-                has_kl_divergence = True
-                break
-
-        if has_kl_divergence:
-            predictions = tuple(self.__predictor() for _ in range(self.__n_predictions))
-            self.__metrics.update(predictions=predictions, labels=self.__train_dataset)
-        else:
-            for _ in range(self.__n_predictions):
-                smiles = self.__predictor()
-                self.__metrics.update(predictions=[smiles], labels=self.__train_dataset)
-
+        self._update()
         results = ', '.join(
             f'{name}: {value:.3f}'
-            for name, value in self.__metrics.get()
+            for name, value in self._metrics.get()
         )
         sys.stdout.write(f'{results}\n')
 
