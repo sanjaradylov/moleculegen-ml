@@ -309,8 +309,14 @@ class SMILESLM(mx.gluon.Block, metaclass=abc.ABCMeta):
         """Return the decoder (e.g. mxnet.gluon.nn.Dense)."""
 
     @abc.abstractmethod
-    def forward(self, inputs, *args, **kwargs):
-        """Run forward computation."""
+    def forward(self, batch, *args, **kwargs):
+        """Run forward computation.
+
+        Parameters
+        ----------
+        batch : moleculegen.data.Batch or similar
+            Mini-batch of input samples. Required to have at least the `inputs` attribute.
+        """
 
     @property
     def ctx(self) -> ContextT:
@@ -416,7 +422,7 @@ class SMILESLM(mx.gluon.Block, metaclass=abc.ABCMeta):
 
                     # noinspection PyUnresolvedReferences
                     with mx.autograd.record():
-                        predictions = self.forward(batch.inputs)
+                        predictions = self.forward(batch)
                         weights = get_mask_for_loss(batch.shape, batch.valid_lengths)
                         loss = loss_fn(predictions, batch.outputs, weights)
                     loss.backward()
