@@ -24,6 +24,7 @@ from typing import Callable, List, Optional
 import mxnet as mx
 
 from ..base import Token
+from ..data.sampler import Batch
 from ..data.vocabulary import SMILESVocabulary
 from ..estimation.base import SMILESLM
 
@@ -161,7 +162,8 @@ class BaseSearch:
         # Predict the next token IDs.
         for n_iter in range(self.max_length):
             inputs = self._np_token_data([token_ids[-1]])  # shape=(1, 1)
-            outputs = self._model(inputs)  # shape=(1, 1, len(self._vocabulary))
+            batch = Batch(inputs=inputs)
+            outputs = self._model(batch)  # shape=(1, 1, len(self._vocabulary))
 
             # Normalize outputs to get probabilities (e.g. using softmax);
             # probabilities.shape == (1, len(self._vocabulary)).
