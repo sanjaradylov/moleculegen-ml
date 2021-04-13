@@ -9,6 +9,7 @@ Classes:
 """
 
 __all__ = (
+    'Batch',
     'SMILESBatchSampler',
     'SMILESBatchColumnSampler',
     'SMILESConsecutiveSampler',
@@ -34,12 +35,14 @@ class Batch:
     - output token sequences of shape (batch size, time steps);
     - valid lengths of samples of shape (batch size,);
     - a flag to (re-)initialize or keep the hidden states of the model being trained.
+
+    For both training and generation stages, at least `inputs` must be specified.
     """
 
-    inputs: mx.np.ndarray         # Input tokens.
-    outputs: mx.np.ndarray        # Output tokens.
-    valid_lengths: mx.np.ndarray  # The number of valid tokens in `outputs`.
-    init_state: bool = False      # Whether to (re-)initialize hidden states.
+    inputs: mx.np.ndarray                # Input tokens.
+    outputs: mx.np.ndarray = None        # Output tokens.
+    valid_lengths: mx.np.ndarray = None  # The number of valid tokens in `outputs`.
+    init_state: bool = False             # Whether to (re-)initialize hidden states.
 
     @property
     def shape(self) -> Tuple[int, ...]:

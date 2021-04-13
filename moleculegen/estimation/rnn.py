@@ -158,8 +158,8 @@ class SMILESRNN(SMILESLM):
                 tie_weights
                 and (
                     embedding_dim != rnn_n_units
-                    or
-                    dense_n_layers > 1
+                    and dense_n_layers == 1
+                    or dense_n_layers > 1
                     and embedding_dim != dense_n_units
                 )
         ):
@@ -218,7 +218,8 @@ class SMILESRNN(SMILESLM):
                 params=shared_params,
             )
             if initialize:
-                self._decoder.initialize(init=dense_init, ctx=ctx)
+                self._decoder.initialize(
+                    force_reinit=tie_weights, init=dense_init, ctx=ctx)
 
         self._state: Optional[List[mx.np.ndarray]] = None
         self.state_initializer: Callable[..., mx.nd.NDArray] = rnn_state_init
@@ -267,20 +268,20 @@ class SMILESRNN(SMILESLM):
         if self.detach_state:
             self._state = [s.detach() for s in self._state]
 
-    # noinspection PyMethodOverriding
-    def forward(self, x: mx.np.ndarray) -> mx.np.ndarray:
+    def forward(self, batch, *args, **kwargs) -> mx.np.ndarray:
         """Run forward computation.
 
         Parameters
         ----------
-        x : mxnet.np.ndarray, shape = (batch size, time steps)
+        batch : moleculegen.data.Batch,
+                batch.inputs.shape = (batch size, time steps)
 
         Returns
         -------
         mxnet.np.ndarray, shape = (batch size, time steps, vocabulary dimension)
         """
         # b=batch size, t=time steps, v=vocab dim, e=embed dim, h=hidden units
-        x = self.embedding(x.T)  # input=(t, b), output=(t, b, e)
+        x = self.embedding(batch.inputs.T)  # input=(t, b), output=(t, b, e)
         x, self._state = self.encoder(x, self._state)  # output=(t, b, h)
         x = self.decoder(x)  # output=(t, b, v)
         return x.swapaxes(0, 1)  # output=(b, t, v)

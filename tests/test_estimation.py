@@ -17,7 +17,7 @@ from moleculegen.estimation import SMILESRNN
 from .utils import TempSMILESFile
 
 
-class SMILESEncoderDecoderTestCase(unittest.TestCase):
+class SMILESRNNTestCase(unittest.TestCase):
     def setUp(self):
         temp_file = TempSMILESFile(tempfile_kwargs={'prefix': 'model'})
         self.fh = temp_file.open()
@@ -66,9 +66,9 @@ class SMILESEncoderDecoderTestCase(unittest.TestCase):
             self.assertEqual(actual_p, test_p)
 
     def test_2_outputs(self):
-        inputs = next(iter(self.batch_sampler)).inputs
+        batch = next(iter(self.batch_sampler))
         self.model.begin_state(self.batch_sampler.batch_size)
-        outputs = self.model(inputs)
+        outputs = self.model(batch)
 
         self.assertTupleEqual(
             (
