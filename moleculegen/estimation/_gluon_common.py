@@ -19,9 +19,11 @@ RNN_MAP: Dict[str, type] = {
 
 INIT_MAP: Dict[str, mx.init.Initializer] = {
     'normal': mx.init.Normal(),
-    'orthogonal': mx.init.Orthogonal(),
     'uniform': mx.init.Uniform(),
-    'xavier': mx.init.Xavier(),
+    'orthogonal_uniform': mx.init.Orthogonal(rand_type='uniform'),
+    'orthogonal_normal': mx.init.Orthogonal(rand_type='normal'),
+    'xavier_uniform': mx.init.Xavier(rnd_type='uniform'),
+    'xavier_normal': mx.init.Xavier(rnd_type='gaussian')
 }
 
 
