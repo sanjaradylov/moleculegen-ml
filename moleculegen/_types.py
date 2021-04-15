@@ -13,7 +13,9 @@ ActivationT = Union[
 
 ContextT = Union[context.Context, List[context.Context]]
 
-Initializers = Literal['uniform', 'normal', 'orthogonal', 'xavier']
+Initializers = Literal[
+    'uniform', 'normal', 'orthogonal_uniform', 'orthogonal_normal',
+    'xavier_uniform', 'xavier_normal']
 InitializerT = Union[None, Initializers, init.Initializer]
 
 Optimizers = Literal[

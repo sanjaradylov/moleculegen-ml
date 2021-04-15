@@ -1,10 +1,8 @@
 """
 The base class for generative language models.
 
-Classes
--------
-SMILESEncoderDecoderABC
-    An ABC for a generative recurrent neural network to encode-decode SMILES strings.
+Classes:
+    SMILESLM: An ABC for generative language models.
 """
 
 __all__ = (
@@ -21,6 +19,7 @@ from typing import Callable, List, Optional, Sequence, TextIO, Tuple
 import mxnet as mx
 from mxnet import autograd, gluon
 
+from . import _gluon_common
 from ..callback.base import Callback, CallbackList
 from ..data.sampler import SMILESBatchSampler
 from ..evaluation.loss import get_mask_for_loss
@@ -291,7 +290,7 @@ class SMILESLM(mx.gluon.Block, metaclass=abc.ABCMeta):
     ):
         super().__init__(prefix=prefix, params=params)
 
-        self.__ctx = ctx or mx.context.cpu()
+        self.__ctx = _gluon_common.get_ctx(ctx)
 
     @property
     @abc.abstractmethod
@@ -456,7 +455,7 @@ class SMILESLM(mx.gluon.Block, metaclass=abc.ABCMeta):
             cls,
             path: str,
             update_features: bool = False,
-            decoder_init: InitializerT = mx.init.Xavier(),
+            decoder_init: InitializerT = 'xavier_uniform',
     ) -> 'SMILESLM':
         """Create a new fine-tuner model: load model configuration and parameters, and
         initialize decoder weights.
@@ -469,23 +468,25 @@ class SMILESLM(mx.gluon.Block, metaclass=abc.ABCMeta):
             path/weights.params - the parameters of a model.
         update_features : bool, default=False
             Whether to update embedding and encoder parameters during training.
-        decoder_init : {'uniform', 'normal', 'orthogonal', 'xavier'}
+        decoder_init : {'uniform', 'normal', 'orthogonal_uniform', 'orthogonal_normal',
+                'xavier_uniform', 'xavier_normal'},
                 or mxnet.init.Initializer or None,
-                default=mxnet.init.Xavier()
+                default='xavier_uniform'
             The parameter initializer of a dense layer.
 
         Returns
         -------
         model : SMILESLM
         """
-        model = cls.from_config(f'{path}/config.json')
-        model.load_parameters(f'{path}/weights.params', ctx=model.ctx)
+        model = cls.from_config(f'{path.rstrip("/")}/config.json')
+        model.load_parameters(f'{path.rstrip("/")}/weights.params', ctx=model.ctx)
 
         if not update_features:
             model.embedding.collect_params().setattr('grad_req', 'null')
             model.encoder.collect_params().setattr('grad_req', 'null')
 
-        model.decoder.initialize(init=decoder_init, force_reinit=True, ctx=model.ctx)
+        model.decoder.initialize(
+            init=_gluon_common.get_init(decoder_init), force_reinit=True, ctx=model.ctx)
 
         return model
 
