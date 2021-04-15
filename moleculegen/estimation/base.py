@@ -21,6 +21,7 @@ from typing import Callable, List, Optional, Sequence, TextIO, Tuple
 import mxnet as mx
 from mxnet import autograd, gluon
 
+from . import _gluon_common
 from ..callback.base import Callback, CallbackList
 from ..data.sampler import SMILESBatchSampler
 from ..evaluation.loss import get_mask_for_loss
@@ -291,7 +292,7 @@ class SMILESLM(mx.gluon.Block, metaclass=abc.ABCMeta):
     ):
         super().__init__(prefix=prefix, params=params)
 
-        self.__ctx = ctx or mx.context.cpu()
+        self.__ctx = _gluon_common.get_ctx(ctx)
 
     @property
     @abc.abstractmethod

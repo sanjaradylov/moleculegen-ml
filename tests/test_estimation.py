@@ -35,19 +35,32 @@ class SMILESRNNTestCase(unittest.TestCase):
 
         self.model = SMILESRNN(
             len(self.vocabulary),
+
             use_one_hot=False,
             embedding_dim=4,
             embedding_dropout=0.25,
-            embedding_init=mx.init.Orthogonal(),
+            embedding_dropout_axes=0,
+            embedding_init=mx.init.Uniform(),
+            embedding_prefix='embedding_',
+
             rnn='lstm',
             rnn_n_layers=self.n_rnn_layers,
             rnn_n_units=self.n_rnn_units,
+            rnn_i2h_init='xavier_normal',
+            rnn_h2h_init='orthogonal_normal',
+            rnn_reinit_state=True,
+            rnn_detach_state=False,
+            rnn_state_init=mx.nd.random.uniform,
             rnn_dropout=0.0,
-            rnn_init=mx.init.Normal(),
-            dense_n_layers=1,
+            rnn_prefix='encoder_',
+
+            dense_n_layers=2,
+            dense_n_units=32,
             dense_activation='relu',
             dense_dropout=0.5,
             dense_init=mx.init.Xavier(),
+            dense_prefix='decoder_',
+
             dtype='float32',
             prefix='model_'
         )
@@ -59,7 +72,8 @@ class SMILESRNNTestCase(unittest.TestCase):
             'model_encoder_l0_i2h_weight', 'model_encoder_l0_h2h_weight',
             'model_encoder_l0_i2h_bias', 'model_encoder_l0_h2h_bias',
 
-            'model_decoder_weight', 'model_decoder_bias',
+            'model_decoder_l0_weight', 'model_decoder_l0_bias',
+            'model_decoder_out_weight', 'model_decoder_out_bias',
         )
 
         for actual_p, test_p in zip(param_names, self.model.collect_params()):
