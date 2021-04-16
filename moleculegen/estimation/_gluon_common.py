@@ -2,12 +2,13 @@
 Gluon objects and sequential models used in the subpackage.
 """
 
+import functools
 from typing import Callable, Dict, List, Optional, Union
 
 import mxnet as mx
 from mxnet import gluon
 
-from .._types import ActivationT, ContextT, InitializerT
+from .._types import ActivationT, ContextT, InitializerT, StateInitializerT
 
 
 # Available RNNs.
@@ -33,6 +34,14 @@ CTX_MAP: Dict[str, Callable[[int], mx.context.Context]] = {
 }
 
 
+STATE_INIT_MAP: Dict[str, Callable[..., mx.nd.NDArray]] = {
+    'zeros': mx.nd.zeros,
+    'ones': mx.nd.ones,
+    'uniform': functools.partial(mx.nd.uniform, low=-0.32, high=0.32),
+    'normal': functools.partial(mx.nd.normal, scale=0.07),
+}
+
+
 def get_ctx(ctx: str) -> ContextT:
     if ctx is None or isinstance(ctx, mx.context.Context):
         return ctx or mx.context.cpu()
@@ -52,6 +61,12 @@ def get_init(initializer: InitializerT) -> Optional[mx.init.Initializer]:
     if isinstance(initializer, mx.init.Initializer):
         return initializer
     return initializer and INIT_MAP[initializer]
+
+
+def get_state_init(initializer: StateInitializerT) -> Callable:
+    if hasattr(initializer, '__call__'):
+        return initializer
+    return STATE_INIT_MAP[initializer]
 
 
 def mlp(
