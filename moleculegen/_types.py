@@ -21,3 +21,6 @@ InitializerT = Union[None, Initializers, init.Initializer]
 Optimizers = Literal[
     'sgd', 'nag', 'adagrad', 'rmsprop', 'adadelta', 'adam', 'nadam', 'ftml']
 OptimizerT = Union[Optimizers, optimizer.Optimizer]
+
+StateInitializers = Literal['zeros', 'ones', 'uniform', 'normal']
+StateInitializerT = Union[StateInitializers, Callable[..., nd.NDArray]]

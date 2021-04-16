@@ -14,7 +14,7 @@ from typing import Callable, List, Literal, Optional, Tuple, Union
 
 import mxnet as mx
 
-from .._types import ActivationT, ContextT, InitializerT
+from .._types import ActivationT, ContextT, InitializerT, StateInitializerT
 from ..description.common import OneHotEncoder
 from . import _gluon_common
 from .base import SMILESLM
@@ -64,7 +64,9 @@ class SMILESRNN(SMILESLM):
         The hidden-to-hidden parameter initializer of a recurrent layer.
     rnn_prefix : str, default='encoder_'
         The prefix of an encoder block.
-    rnn_state_init : callable, any -> mxnet.nd.NDArray, default=mxnet.nd.zeros
+    rnn_state_init : callable, any -> mxnet.nd.NDArray,
+            or {'zeros', 'ones', 'uniform', 'normal'},
+            default='zeros'
         The RNN hidden state initializer.
     rnn_reinit_state : bool, default=False
         Whether to reinitialize the hidden state on `begin_state` call.
@@ -109,24 +111,25 @@ class SMILESRNN(SMILESLM):
 
     Attributes
     ----------
-    ctx : mxnet.context.Context or list of mxnet.context.Context
-        The model's context.
     embedding : moleculegen.description.OneHotEncoder or mxnet.gluon.nn.Embedding
             or mxnet.gluon.nn.HybridSequential
-        An embedding block.
+        An embedding block. (read-only)
     encoder : mxnet.gluon.rnn.RNN or mxnet.gluon.rnn.LSTM or mxnet.gluon.rnn.GRU
-        An RNN encoder block.
+        An RNN encoder block. (read-only)
     decoder : mxnet.gluon.nn.Dense or mxnet.gluon.nn.HybridSequential
-        A Feed-Forward NN decoder block.
+        A Feed-Forward NN decoder block. (read-only)
     state : list of mxnet.np.ndarray, shape = (rnn_n_layers, batch size, n_rnn_units)
-        The hidden state of `encoder`.
+        The hidden state of `encoder`. (read-only)
+
+    ctx : mxnet.context.Context or list of mxnet.context.Context
+        The model's context. (writable)
     state_initializer : callable, any -> mxnet.nd.NDArray
-        The hidden state initializer.
+        The hidden state initializer. (writable)
     reinit_state : bool
-        Whether to reinitialize the hidden state on `begin_state` call.
+        Whether to reinitialize the hidden state on `begin_state` call. (writable)
     detach_state : bool
         Whether to detach the hidden state from the computational graph on `begin_state`
-        call.
+        call. (writable)
     """
 
     def __init__(
@@ -148,7 +151,7 @@ class SMILESRNN(SMILESLM):
             rnn_i2h_init: InitializerT = 'xavier_uniform',
             rnn_h2h_init: InitializerT = 'orthogonal_normal',
             rnn_prefix: str = 'encoder_',
-            rnn_state_init: Callable[..., mx.nd.NDArray] = mx.nd.zeros,
+            rnn_state_init: StateInitializerT = 'zeros',
             rnn_reinit_state: bool = False,
             rnn_detach_state: bool = True,
 
@@ -184,7 +187,6 @@ class SMILESRNN(SMILESLM):
         super().__init__(ctx=ctx, prefix=prefix, params=params)
 
         with self.name_scope():
-            # Define (and initialize) an embedding block.
             if use_one_hot:
                 self._embedding = OneHotEncoder(vocab_size)
             else:
@@ -207,7 +209,6 @@ class SMILESRNN(SMILESLM):
                     self._embedding = embedding_block
                     shared_params = self._embedding.params if tie_weights else None
 
-            # Select (and initialize) a recurrent block.
             self._encoder = _gluon_common.RNN_MAP[rnn](
                 hidden_size=rnn_n_units,
                 num_layers=rnn_n_layers,
@@ -218,7 +219,6 @@ class SMILESRNN(SMILESLM):
                 prefix=rnn_prefix,
             )
 
-            # Define (and initialize) a dense (sequential) block.
             self._decoder = _gluon_common.mlp(
                 n_layers=dense_n_layers,
                 n_units=dense_n_units,
@@ -235,7 +235,8 @@ class SMILESRNN(SMILESLM):
                 self.initialize(ctx=self.ctx)
 
         self._state: Optional[List[mx.np.ndarray]] = None
-        self.state_initializer: Callable[..., mx.nd.NDArray] = rnn_state_init
+        self.state_initializer: Callable[..., mx.nd.NDArray] = \
+            _gluon_common.get_state_init(rnn_state_init)
         self.reinit_state: bool = rnn_reinit_state
         self.detach_state: bool = rnn_detach_state
 
@@ -322,15 +323,19 @@ class SMILESRNN(SMILESLM):
             use_one_hot=raw_data['embedding']['use_one_hot'],
             embedding_dim=raw_data['embedding']['dim'],
             embedding_dropout=raw_data['embedding']['dropout'],
-            embedding_init=_gluon_common.INIT_MAP[raw_data['embedding']['init'].lower()],
+            embedding_dropout_axes=raw_data['embedding']['dropout_axes'],
+            embedding_init=_gluon_common.get_init(raw_data['embedding']['init'].lower()),
             embedding_prefix=raw_data['embedding']['prefix'],
 
             rnn=raw_data['encoder']['rnn'],
             rnn_n_layers=raw_data['encoder']['n_layers'],
             rnn_n_units=raw_data['encoder']['n_units'],
             rnn_dropout=raw_data['encoder']['dropout'],
-            rnn_init=_gluon_common.INIT_MAP[raw_data['encoder']['init'].lower()],
+            rnn_i2h_init=_gluon_common.get_init(raw_data['encoder']['i2h_init'].lower()),
+            rnn_h2h_init=_gluon_common.get_init(raw_data['encoder']['h2h_init'].lower()),
             rnn_prefix=raw_data['encoder']['prefix'],
+            rnn_state_init=_gluon_common.get_state_init(
+                raw_data['encoder']['state_init'].lower()),
             rnn_reinit_state=raw_data['encoder']['reinit_state'],
             rnn_detach_state=raw_data['encoder']['detach_state'],
 
@@ -338,6 +343,6 @@ class SMILESRNN(SMILESLM):
             dense_n_units=raw_data['decoder']['n_units'],
             dense_activation=raw_data['decoder']['activation'],
             dense_dropout=raw_data['decoder']['dropout'],
-            dense_init=_gluon_common.INIT_MAP[raw_data['decoder']['init'].lower()],
+            dense_init=_gluon_common.get_init(raw_data['decoder']['init'].lower()),
             dense_prefix=raw_data['decoder']['prefix'],
         )
