@@ -443,12 +443,11 @@ class SMILESLM(mx.gluon.Block, metaclass=abc.ABCMeta):
                 callback_list.on_keyboard_interrupt(**init_params)
 
         finally:
+            if callback_list is not None:
+                callback_list.on_train_end(**init_params)
             # If `log_handler` is a file-like and was opened.
             if log_handler is not None:
                 log_handler.close()
-
-            if callback_list is not None:
-                callback_list.on_train_end(**init_params)
 
     @classmethod
     def load_fine_tuner(
