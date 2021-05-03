@@ -1,11 +1,9 @@
 """
 Base objects for all modules.
 
-Classes
--------
-Token
-    A token enumeration, which stores a diverse set of atomic, bond, and
-    composite tokens.
+Classes:
+    Token: A token enumeration, which stores a diverse set of atomic, bond,
+           and composite tokens.
 """
 
 __all__ = (
@@ -40,20 +38,21 @@ class Token:
 
     # Bonds, charges, etc.
     NON_ATOMS = frozenset([
-        '-', '=', '#', ':', '(', ')', '%', '.', '[', ']', '@', '+', '-',
+        '-', '=', '#', ':', '(', ')', '.', '[', ']', '@', '+', '-', '*',
         '1', '2', '3', '4', '5', '6', '7', '8', '9', '\\', '/'
     ])
 
-    # Subcompounds.
+    # Subcompounds, chiral specification.
     AGGREGATE = frozenset([
-        '@@', '10'
+        '@@', '@TH', '@AL', '@SP', '@TB', '@OH',
+        # '(=O)', '[nH]',
     ])
 
     # Special tokens not presented in the SMILES vocabulary.
     BOS = '{'  # Beginning of SMILES.
     EOS = '}'  # End of SMILES.
     PAD = '_'  # Padding.
-    UNK = '*'  # Unknown.
+    UNK = '^'  # Unknown.
     SPECIAL = frozenset(BOS + EOS + PAD + UNK)
 
     @classmethod
@@ -176,6 +175,7 @@ class Token:
         """,
         flags=re.VERBOSE,
     )
+    _DIGITS_RE = re.compile(r'(?P<digits>\d{2,}).*')
 
     @classmethod
     def _tokenize(cls, smiles: str) -> List[str]:
@@ -194,7 +194,17 @@ class Token:
             else:
                 one_char_token = smiles[char_no]
                 two_char_token = smiles[char_no:char_no + 2]
+                four_char_token = smiles[char_no:char_no + 4]
                 if (
+                        # Double-char atoms like '[se]'.
+                        four_char_token.startswith('[')
+                        and four_char_token.endswith(']')
+                        and four_char_token[1:].islower()
+                        and four_char_token[1:-1].title() in cls.ATOMS
+                ):
+                    token_list.append(four_char_token)
+                    char_no += 4
+                elif (
                         # Double-char token that cannot be represented as
                         # two separate atoms; 'no' will be treated as two
                         # single-char tokens 'n' and 'o', while 'Se' or 'Na' as
@@ -210,10 +220,18 @@ class Token:
                 elif (
                         one_char_token.title() in cls.ATOMS  # n, o, etc.;
                         or one_char_token in cls.NON_ATOMS   # -, #, \., etc.;
-                        or one_char_token in cls.SPECIAL     # {, }, _, *.
+                        or one_char_token in cls.SPECIAL     # {, }, _, ^.
                 ):
                     token_list.append(one_char_token)
                     char_no += 1
+                elif one_char_token.startswith('%'):  # Digits > 9 like %10 or %108.
+                    match = cls._DIGITS_RE.match(smiles, char_no + 1)
+                    if match is not None:
+                        tokens = f'%{match.group("digits")}'
+                        token_list.append(tokens)
+                        char_no += len(tokens)
+                    else:
+                        return []
                 # If we didn't find any valid token, then return an empty list.
                 else:
                     return []

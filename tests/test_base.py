@@ -93,14 +93,14 @@ class TokenTestCase(unittest.TestCase):
         test(['C', 'n', '(', '=', 'N', ')'])
 
         # Single-char and double-char tokens.
-        test(['O', '@', 'N', '2', 'Os', 'i', '[', 'Ni', ']'])
+        test(['O', '@', 'N', '2', 'Os', 'i', '[se]'])
 
         # Single-char and double-char tokens w/ two consecutive tokens
         # composing an atom (they should be divided into two separate tokens).
         test(['C', 'N', 'C', 'n', 'o', 'Cl', 'C', 'Cl', 'O'])
 
         # Subcompound tokens.
-        test(['N', '@@', '(', 'C', ')', 'C', '(', '=', 'O', ')', 'O', '10'])
+        test(['N', '@@', '(', 'C', ')', 'C', '(', '=', 'O', ')', 'O', '%10'])
 
         # Includes subcompounds in square brackets.
         test(['c', '1', 'c', 'n', 'c', '[nH]', 'c', '(', '=', 'O', ')', '1'], True)
