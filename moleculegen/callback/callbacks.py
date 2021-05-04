@@ -460,16 +460,16 @@ class Generator(Callback):
     Parameters
     ----------
     filename : str
-        The name of a file to save predictions. If `epoch` is None, then the full file
-        name will be `filename.csv`. Otherwise, every file will have the name
-        `filename_epoch_{epoch}.csv`.
+        The prefix of a file `{filename}_epoch_{epoch}.smi` to save predictions.
     predictor : moleculegen.generation.BaseSearch
         A SMILES string predictor.
-    n_predictions : int, default=1000
+    n_predictions : int, default=1_000
         The number of compounds to generate.
     epoch : int, default=None
         Generate every `epoch` epoch.
         If None, generate only after full training.
+    metric : moleculegen.evaluation.Metric or moleculegen.evaluation.CompositeMetric,
+             default=None
     on_interrupt : bool, default=False
         Generate on keyboard interrupt
         (e.g. manual keyboard interrupt or early stopping).
@@ -481,21 +481,21 @@ class Generator(Callback):
             self,
             filename: str,
             predictor: BaseSearch,
-            n_predictions: int = 1000,
-            metric: Optional[Metric] = None,
+            n_predictions: int = 1_000,
+            metric: Union[Metric, CompositeMetric, None] = None,
             epoch: Optional[int] = None,
             on_interrupt: bool = False,
             **kwargs,
     ):
-        self.__predictor = predictor
-        self.__n_predictions = n_predictions
-        self.__filename = filename
-        self.__metric = metric
-        self.__epoch = epoch
-        self.__on_interrupt = on_interrupt
-        self.__kwargs = kwargs
+        self._predictor = predictor
+        self._n_predictions = n_predictions
+        self._filename = filename
+        self._metric = metric
+        self._epoch = epoch
+        self._on_interrupt = on_interrupt
+        self._kwargs = kwargs
 
-    def _generate_and_save(self, epoch: Optional[int]):
+    def _generate_and_save(self, epoch: Optional[int] = None):
         """Generate and save predictions. If `metric` is specified, evaluate the
         predictions.
 
@@ -503,40 +503,35 @@ class Generator(Callback):
         ----------
         epoch : int, default=None
         """
-        def generate() -> str:
-            """Generate one SMILES string and save.
-
-            Returns
-            -------
-            smiles : str
-            """
-            smiles = self.__predictor()
-            fh.write(f'{smiles}\n')
-
-            return smiles
-
         # If a metric is specified, generate and save SMILES strings `n_predictions`
         # times and evaluate them;
-        if self.__metric is not None:
+        if self._metric is not None:
             def call():
-                for _ in range(self.__n_predictions):
-                    self.__metric.update(
-                        predictions=[generate()],
-                        labels=self.__kwargs.get('train_dataset'),
-                    )
-                name, result = self.__metric.get()
-                sys.stdout.write(f'{name}: {result:.3f}\n')
+                predictions = tuple(self._predictor() for _ in range(self._n_predictions))
+                self._metric.update(
+                    predictions=predictions, labels=self._kwargs.get('train_dataset'))
+                for smiles in predictions:
+                    fh.write(f'{smiles}\n')
 
+                if isinstance(self._metric, CompositeMetric):
+                    results = ', '.join(
+                        f'{name}: {value:.3f}'
+                        for name, value in self._metric.get()
+                    )
+                else:
+                    name, value = self._metric.get()
+                    results = f'{name}: {value:.3f}'
+                sys.stdout.write(f'{results}\n')
         # otherwise, generate and save strings `n_predictions` times.
         else:
             def call():
-                for _ in range(self.__n_predictions):
-                    generate()
+                for _ in range(self._n_predictions):
+                    fh.write(f'{self._predictor()}\n')
 
         if epoch is not None:
-            filename = f'{self.__filename}_epoch_{epoch}.csv'
+            filename = f'{self._filename}_epoch_{epoch}.smi'
         else:
-            filename = f'{self.__filename}.csv'
+            filename = f'{self._filename}.smi'
 
         # Run the main function.
         with open(filename, 'w') as fh:
@@ -551,12 +546,12 @@ class Generator(Callback):
         Expected named arguments:
             - n_epochs
         """
-        if self.__metric is not None:
-            self.__metric.reset()
+        if self._metric is not None:
+            self._metric.reset()
 
         n_epochs = fit_kwargs.get('n_epochs')
-        if self.__epoch is None:
-            self.__epoch = n_epochs
+        if self._epoch is None:
+            self._epoch = n_epochs
 
     def on_epoch_end(self, **fit_kwargs):
         """Launch generation process every specified epoch.
@@ -568,7 +563,7 @@ class Generator(Callback):
         """
         epoch = fit_kwargs.get('epoch')
 
-        if epoch % self.__epoch == 0:
+        if epoch % self._epoch == 0:
             self._generate_and_save(epoch)
 
     def on_keyboard_interrupt(self, **fit_kwargs):
@@ -581,7 +576,7 @@ class Generator(Callback):
         """
         epoch = fit_kwargs.get('epoch')
 
-        if self.__on_interrupt:
+        if self._on_interrupt:
             self._generate_and_save(epoch)
 
 
@@ -608,7 +603,7 @@ class PhysChemDescriptorPlotter(Callback):
         Pass either `predictor` or `valid_data_file_prefix`.
     valid_data_file_prefix : str, default=None
         If not None, load the validation data from files with names
-        '{valid_data_file_prefix}_epoch_{epoch}.csv'.
+        '{valid_data_file_prefix}_epoch_{epoch}.smi'.
         Pass either `predictor` or `valid_data_file_prefix`.
     """
 
@@ -679,7 +674,7 @@ class PhysChemDescriptorPlotter(Callback):
         if epoch % self._epoch == 0:
 
             if self._valid_data_file_prefix is not None:
-                with open(f'{self._valid_data_file_prefix}_epoch_{epoch}.csv') as fh:
+                with open(f'{self._valid_data_file_prefix}_epoch_{epoch}.smi') as fh:
                     valid_data_desc = get_descriptors_df(
                         compounds=fh.readlines(),
                         function_map=PHYSCHEM_DESCRIPTOR_MAP,
