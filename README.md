@@ -5,24 +5,17 @@
 [![PythonVersion](https://img.shields.io/badge/python-3.8-blue)](https://www.python.org/downloads/release/python-388/)
 [![issues](https://img.shields.io/github/issues/sanjaradylov/moleculegen-ml)](https://github.com/sanjaradylov/moleculegen-ml/issues)
 
-This project is an attempt to create a Python package for the complete *de novo* drug design
-cycle similar to papers [Segler et al, Gupta et al, Brown et al.](#reference).
-
-In brief, the project comprises
-[two stages](https://github.com/sanjaradylov/moleculegen-ml/projects) of analysis.
-In [Stage 1](https://github.com/sanjaradylov/moleculegen-ml/projects/1), we train and evaluate
-a neural language model on a large, general set of molecules to generate novel molecules.
-In [Stage 2](https://github.com/sanjaradylov/moleculegen-ml/projects/2), we choose specific
-targets of interest to create a predictive model, and then perform transfer learning on a
-focused set of active molecules.
-
+**Moleculegen-ML** [[1]](#reference) is a Python package for *de novo* drug design based
+on generative language modeling. It comprises tools for molecular data processing,
+SMILES-based language modeling and transfer learning.
 
 ## Documentation
 For now, our [wiki](https://github.com/sanjaradylov/moleculegen-ml/wiki) serves as a
-documentation (or rather a user guide) for the project.
+documentation (or rather a user guide) for the project. Our paper [[1]](#references) is a
+survey of various machine learning methods for SMILES-based molecule generation.
 
-[Projects](https://github.com/sanjaradylov/moleculegen-ml/projects) keep track of the
-current state of the project. 
+If you find **Moleculegen-ML** useful in your research, please consider citing
+[[1]](#references).
 
 ## Installation
 
@@ -33,7 +26,8 @@ We use the latest stable version of Ubuntu to test our project.
 
 Download, install, and set up [Miniconda](https://conda.io/en/latest/miniconda.html).
 
-Create a new environment and install dependencies (see `environment.yml` and `requirements.txt`):
+Create a new environment and install dependencies (see `environment.yml` and
+`requirements.txt`):
 ```bash
 $ conda env create -f environment.yml
 $ conda activate moleculegen
@@ -56,31 +50,25 @@ $ pip install git+https://github.com/sanjaradylov/moleculegen-ml.git
 
 See [wiki](https://github.com/sanjaradylov/moleculegen-ml/wiki) for feature overview and documentation.
 
-We also provide an example script `scripts/run.py`. To observe the command line arguments print a help message:
+We provide the benchmarking script `scripts/run.py`. To observe the command line 
+arguments print a help message:
 ```bash
 $ python3 run.py --help
 ```
-
-If you do not have your own data set, please download [ChEMBL database](https://www.ebi.ac.uk/chembl/) and
-follow the instructions above.
-
-Create a text file from ChEMBL database according to a specified SQL query.
-You can create a dataset manually (without post-processing):
-
-```bash
-$ cd data
-$ sqlite3 -csv YourChEMBL.db < stage1_smiles.sql > stage1_compounds.csv
-```
-or applying several filters (e.g. removal of long SMILES strings) to the loaded dataset:
-```bash
-$ cd scripts
-$ export DB_FILENAME=YourChEMBL.db
-$ python3 process_stage1_data.py -o ../data/stage1_compounds_post_processed.csv
-```
+The paper uses standardized [ChEMBL](https://www.ebi.ac.uk/chembl/) data from
+[[4]](#references). If you wish to experiment with your own dataset, consider also the
+preprocessing scripts in `queries/` and `scripts/`.
 
 
-## Reference
+## References
 
-1. Segler et al. Generating Focused Molecule Libraries for Drug Discovery with Recurrent Neural Networks. https://arxiv.org/pdf/1701.01329.pdf
-2. Gupta et al. Generative Recurrent Networks for De Novo Drug Design. DOI: 10.1002/minf.201700111
-3. Brown et al. GuacaMol: Benchmarking Models for de Novo Molecular Design. J. Chem. Inf. Model. 2019, 59, 1096−1108
+1. Adilov, Sanjar (2021): Neural Language Modeling for Molecule Generation. ChemRxiv.
+   Preprint. https://doi.org/10.26434/chemrxiv.14700831.v1 
+2. Segler et al. Generating Focused Molecule Libraries for Drug Discovery with 
+   Recurrent Neural Networks. https://arxiv.org/pdf/1701.01329.pdf
+3. Gupta et al. Generative Recurrent Networks for De Novo Drug Design. DOI: 10.
+   1002/minf.201700111
+4. Brown et al. GuacaMol: Benchmarking Models for de Novo Molecular Design. J. Chem. 
+   Inf. Model. 2019, 59, 1096−1108
+5. D.  Polykovskiy  et  al. Molecular  sets  (moses):  a  benchmarking platform for
+   molecular generation models. 2020. Front Pharmacol 11:58.
