@@ -7,7 +7,7 @@
 
 **Moleculegen-ML** [[1]](#reference) is a Python package for *de novo* drug design based
 on generative language modeling. It comprises tools for molecular data processing,
-SMILES-based language modeling and transfer learning.
+SMILES-based language modeling (recurrent networks, autoregressive transformers, convolutional networks) and transfer learning.
 
 ## Documentation
 For now, our [wiki](https://github.com/sanjaradylov/moleculegen-ml/wiki) serves as a
