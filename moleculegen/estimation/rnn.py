@@ -189,6 +189,7 @@ class SMILESRNN(SMILESLM):
         with self.name_scope():
             if use_one_hot:
                 self._embedding = OneHotEncoder(vocab_size)
+                shared_params = None
             else:
                 embedding_block = mx.gluon.nn.Embedding(
                     input_dim=vocab_size,
